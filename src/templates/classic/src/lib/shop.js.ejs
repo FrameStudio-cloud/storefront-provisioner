@@ -1,0 +1,54 @@
+import { supabase } from './supabase'
+
+let cachedShopId = null
+let cachedSettings = null
+
+export async function getShopId() {
+  if (cachedShopId) return cachedShopId
+
+  const slug = import.meta.env.VITE_SHOP_SLUG
+  if (slug) {
+    const { data } = await supabase
+      .from('shops')
+      .select('id')
+      .eq('slug', slug)
+      .single()
+    if (data) {
+      cachedShopId = data.id
+      return data.id
+    }
+    return null
+  }
+
+  const host = window.location.hostname
+  const { data } = await supabase
+    .from('store_settings')
+    .select('shop_id')
+    .ilike('website_url', `%${host}%`)
+    .limit(1)
+    .maybeSingle()
+
+  if (data) {
+    cachedShopId = data.shop_id
+    return data.shop_id
+  }
+  return null
+}
+
+export async function getShopSettings() {
+  if (cachedSettings) return cachedSettings
+  const shopId = await getShopId()
+  if (!shopId) return null
+  const { data } = await supabase
+    .from('store_settings')
+    .select('*')
+    .eq('shop_id', shopId)
+    .single()
+  if (data) cachedSettings = data
+  return data || null
+}
+
+export function withShop(payload) {
+  if (!cachedShopId) throw new Error('Shop not loaded yet')
+  return { ...payload, shop_id: cachedShopId }
+}

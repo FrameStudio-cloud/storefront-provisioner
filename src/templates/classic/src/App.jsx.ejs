@@ -1,0 +1,90 @@
+import React, { useRef } from 'react'
+import {
+  Navbar,
+  Hero,
+  Container,
+  Section,
+  CatalogueGrid,
+  Footer,
+  WhatsAppFloat,
+  BackToTop,
+<% if (announcements.length > 0) { %>  AnnouncementBar,<% } %>
+  Animate,
+} from 'cite-ui'
+import shopConfig from './config/site'
+
+export default function App() {
+  const catalogueRef = useRef(null)
+  const c = shopConfig
+
+  return (
+    <div className="min-h-screen bg-white">
+<% if (announcements.length > 0) { %>
+      {c.announcements.map((a, i) => (
+        <AnnouncementBar key={i} message={a.message} variant={a.type} />
+      ))}
+<% } %>
+      <Navbar
+        brand={c.name}
+        variant="transparent"
+        links={[{ label: 'Home', href: '#home' }, { label: 'Catalogue', href: '#catalogue' }]}
+        whatsapp={c.whatsapp}
+      />
+
+      <section id="home">
+<% if (slides.length > 0) { %>
+        <Hero
+          variant="slideshow"
+          slides={c.slides.map(s => ({
+            image: { src: s.image, alt: s.tag },
+            tag: s.tag,
+            title: s.title,
+            titleAccent: s.titleAccent,
+            description: s.description,
+            buttonText: s.buttonText,
+            buttonLink: s.buttonLink,
+          }))}
+        />
+<% } else { %>
+        <Hero
+          title={c.name}
+          titleAccent={c.nameAccent}
+          description={c.tagline || c.description}
+          buttonText="View Catalogue"
+          buttonLink="#catalogue"
+        />
+<% } %>
+      </section>
+
+<% if (catalogue.length > 0) { %>
+      <section id="catalogue" ref={catalogueRef}>
+        <Section title="Our Catalogue" subtitle="Browse our products and order via WhatsApp">
+          <Animate type="slideUp" trigger="viewport">
+            <CatalogueGrid items={c.catalogue} />
+          </Animate>
+        </Section>
+      </section>
+<% } %>
+
+      <footer id="contact">
+        <Footer
+          brand={c.name}
+          description={c.tagline || ''}
+          contact={[
+            ...(c.whatsapp ? [{ icon: 'phone', label: 'WhatsApp', href: `https://wa.me/${c.whatsapp}`, content: c.whatsapp }] : []),
+            ...(c.email ? [{ icon: 'mail', label: 'Email', href: `mailto:${c.email}`, content: c.email }] : []),
+            ...(c.location ? [{ icon: 'mapPin', label: 'Location', content: c.location }] : []),
+          ]}
+          businessHours={c.hours && c.hours.length > 0 ? c.hours : undefined}
+          developerCredit={{
+            name: c.developerName,
+            whatsapp: c.developerWhatsapp,
+          }}
+        />
+      </footer>
+
+      <WhatsAppFloat phone={c.whatsapp} />
+      <BackToTop />
+    </div>
+  )
+}

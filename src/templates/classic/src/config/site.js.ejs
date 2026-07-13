@@ -1,0 +1,18 @@
+const shopConfig = {
+  name: '<%= name %>',
+  nameAccent: '<%= nameAccent %>',
+  whatsapp: '<%= whatsapp %>',
+  phone: '<%= phone %>',
+  email: '<%= email %>',
+  address: '<%= address %>',
+  hours: <%- JSON.stringify(hours || []) %>,
+  primaryColor: '<%= primaryColor %>',
+  accentColor: '<%= accentColor %>',
+  developerName: '<%= developerName %>',
+  developerWhatsapp: '<%= developerWhatsapp %>',
+  slides: <%- JSON.stringify(slides) %>,
+  catalogue: <%- JSON.stringify(catalogue) %>,
+  announcements: <%- JSON.stringify(announcements) %>,
+}
+
+export default shopConfig

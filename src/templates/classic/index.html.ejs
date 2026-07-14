@@ -7,10 +7,35 @@
   <meta property="og:title" content="<%= name %>" />
   <meta property="og:description" content="<%= (tagline || description || name) %>" />
   <meta property="og:type" content="website" />
+  <meta property="og:url" content="https://<%= (websiteUrl || name.toLowerCase().replace(/\s+/g, '-') + '.keel.framestudio.co.ke') %>" />
   <meta name="twitter:card" content="summary" />
   <meta name="twitter:title" content="<%= name %>" />
   <meta name="twitter:description" content="<%= (tagline || description || name) %>" />
   <title><%= name %> — Storefront</title>
+  <style>
+    :root {
+      --color-primary: <%= primaryColor %>;
+      --color-accent: <%= accentColor %>;
+    }
+  </style>
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "Store",
+    "name": "<%= (name || '').replace(/"/g, '\\"') %>",
+    "description": "<%= ((tagline || description || name) || '').replace(/"/g, '\\"') %>",
+    "url": "https://<%= (websiteUrl || name.toLowerCase().replace(/\s+/g, '-') + '.keel.framestudio.co.ke') %>",
+    "contactPoint": {
+      "@type": "ContactPoint",
+      "telephone": "<%= whatsapp || '' %>",
+      "contactType": "sales"
+    },
+    "address": {
+      "@type": "PostalAddress",
+      "streetAddress": "<%= (address || location || '').replace(/"/g, '\\"') %>"
+    }
+  }
+  </script>
 </head>
 <body>
   <div id="root"></div>

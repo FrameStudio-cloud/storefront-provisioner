@@ -1,4 +1,5 @@
-import React, { useRef } from 'react'
+import React, { useEffect, useRef } from 'react'
+import { Routes, Route, useParams, useNavigate } from 'react-router-dom'
 import {
   Navbar,
   Hero,
@@ -10,12 +11,15 @@ import {
   BackToTop,
 <% if (announcements.length > 0) { %>  AnnouncementBar,<% } %>
   Animate,
+  ProductDetail,
 } from 'cite-ui'
 import shopConfig from './config/site'
 
-export default function App() {
+const c = shopConfig
+
+function HomePage() {
+  const navigate = useNavigate()
   const catalogueRef = useRef(null)
-  const c = shopConfig
 
   return (
     <div className="min-h-screen bg-white">
@@ -25,9 +29,12 @@ export default function App() {
       ))}
 <% } %>
       <Navbar
-        brand={c.name}
+        logo={c.name}
         variant="transparent"
-        links={[{ label: 'Home', href: '#home' }, { label: 'Catalogue', href: '#catalogue' }]}
+        links={[
+          { label: 'Home', href: '/' },
+          { label: 'Catalogue', href: '/#catalogue' },
+        ]}
         whatsapp={c.whatsapp}
       />
 
@@ -50,17 +57,48 @@ export default function App() {
           title={c.name}
           titleAccent={c.nameAccent}
           description={c.tagline || c.description}
-          buttonText="View Catalogue"
-          buttonLink="#catalogue"
+          primaryCta={{ label: 'View Catalogue', href: '/#catalogue' }}
         />
 <% } %>
       </section>
 
+<% if (about) { %>
+      <Section bg="bg-gray-50">
+        <Container maxWidth="lg">
+          <Animate type="slideUp" trigger="viewport">
+            <div className="text-center max-w-3xl mx-auto">
+              <h2 className="text-2xl sm:text-3xl font-bold text-gray-900 mb-4">About <%= c.name %></h2>
+              <p className="text-base text-gray-600 leading-relaxed"><%= about %></p>
+            </div>
+          </Animate>
+        </Container>
+      </Section>
+<% } %>
+
 <% if (catalogue.length > 0) { %>
       <section id="catalogue" ref={catalogueRef}>
-        <Section title="Our Catalogue" subtitle="Browse our products and order via WhatsApp">
+        <Section bg="bg-gray-50">
+          <div className="mb-8">
+            <h2 className="text-2xl sm:text-3xl font-bold text-gray-900">Our Catalogue</h2>
+            <p className="text-gray-500 mt-2 max-w-2xl">Browse our products and order via WhatsApp</p>
+          </div>
           <Animate type="slideUp" trigger="viewport">
-            <CatalogueGrid items={c.catalogue} />
+            <CatalogueGrid
+              items={c.catalogue.map(item => ({
+                ...item,
+                cta: c.whatsapp
+                  ? {
+                      label: 'View Details',
+                      onClick: () => navigate(`/product/${item.id}`),
+                    }
+                  : undefined,
+              }))}
+              searchable
+              searchPlaceholder="Search products..."
+              onItemClick={(item) => {
+                navigate(`/product/${item.id}`)
+              }}
+            />
           </Animate>
         </Section>
       </section>
@@ -83,8 +121,72 @@ export default function App() {
         />
       </footer>
 
-      <WhatsAppFloat phone={c.whatsapp} />
+      <WhatsAppFloat phoneNumber={c.whatsapp} />
       <BackToTop />
     </div>
+  )
+}
+
+function ProductPage() {
+  const { id } = useParams()
+  const navigate = useNavigate()
+  const product = c.catalogue.find(item => String(item.id) === String(id))
+
+  useEffect(() => {
+    document.title = product
+      ? `${product.title} — ${c.name}`
+      : `Product not found — ${c.name}`
+  }, [product])
+
+  return (
+    <div className="min-h-screen bg-white">
+      <Navbar
+        logo={c.name}
+        variant="default"
+        links={[
+          { label: 'Home', href: '/' },
+          { label: 'Catalogue', href: '/#catalogue' },
+        ]}
+        whatsapp={c.whatsapp}
+      />
+
+      <Section padding="md">
+        <Container>
+          <ProductDetail
+            product={product}
+            onBack={() => navigate('/')}
+            onWhatsApp={c.whatsapp}
+            currency={c.currency}
+          />
+        </Container>
+      </Section>
+
+      <Footer
+        brand={c.name}
+        description={c.tagline || ''}
+        contact={[
+          ...(c.whatsapp ? [{ icon: 'phone', label: 'WhatsApp', href: `https://wa.me/${c.whatsapp}`, value: c.whatsapp }] : []),
+          ...(c.email ? [{ icon: 'mail', label: 'Email', href: `mailto:${c.email}`, value: c.email }] : []),
+          ...(c.location ? [{ icon: 'mapPin', label: 'Location', value: c.location }] : []),
+        ]}
+        businessHours={c.hours && c.hours.length > 0 ? c.hours : undefined}
+        developerCredit={{
+          name: c.developerName,
+          whatsapp: c.developerWhatsapp,
+        }}
+      />
+
+      <WhatsAppFloat phoneNumber={c.whatsapp} />
+      <BackToTop />
+    </div>
+  )
+}
+
+export default function App() {
+  return (
+    <Routes>
+      <Route path="/" element={<HomePage />} />
+      <Route path="/product/:id" element={<ProductPage />} />
+    </Routes>
   )
 }

@@ -73,8 +73,9 @@ function mapToConfig(raw) {
     email: settings.store_email || '',
     location: settings.store_address || '',
     address: settings.store_address || '',
+    currency: settings.currency_symbol || 'KSh',
     hours,
-    primaryColor: '#7c3aed',
+    primaryColor: '#000000',
     accentColor: '#f59e0b',
     slides,
     catalogue: (catalogue || []).map((item) => ({

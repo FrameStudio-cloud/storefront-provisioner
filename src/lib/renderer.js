@@ -31,7 +31,7 @@ function mapToConfig(raw) {
   const { shop, settings, catalogue, banners } = raw
   const name = settings.store_name || shop.name || ''
   const nameParts = name.split(/[\s/]/).filter(Boolean)
-  const nameAccent = nameParts.length > 1 ? nameParts.pop() : ''
+  const nameAccent = settings.name_accent || (nameParts.length > 1 ? nameParts.pop() : '')
 
   const slides = (banners || [])
     .filter((b) => b.type === 'hero' && b.active !== false)
@@ -76,8 +76,9 @@ function mapToConfig(raw) {
     currency: settings.currency_symbol || 'KSh',
     websiteUrl: settings.website_url || '',
     hours,
-    primaryColor: '#000000',
-    accentColor: '#f59e0b',
+    primaryColor: settings.primary_color || '#000000',
+    secondaryColor: settings.secondary_color || '#4f46e5',
+    accentColor: settings.accent_color || '#f59e0b',
     slides,
     catalogue: (catalogue || []).map((item) => ({
       id: item.id,
@@ -95,7 +96,11 @@ function mapToConfig(raw) {
       includes: item.includes || [],
     })),
     announcements,
-    socialLinks: [],
+    socialLinks: [
+      ...(settings.instagram ? [{ icon: 'instagram', href: `https://instagram.com/${settings.instagram.replace(/^@/, '')}`, label: 'Instagram' }] : []),
+      ...(settings.facebook ? [{ icon: 'facebook', href: settings.facebook.startsWith('http') ? settings.facebook : `https://facebook.com/${settings.facebook}`, label: 'Facebook' }] : []),
+      ...(settings.tiktok ? [{ icon: 'tiktok', href: settings.tiktok.startsWith('http') ? settings.tiktok : `https://tiktok.com/@${settings.tiktok.replace(/^@/, '')}`, label: 'TikTok' }] : []),
+    ],
     developerName: 'Framestudio',
     developerWhatsapp: '254793302518',
   }

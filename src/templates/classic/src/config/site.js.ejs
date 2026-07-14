@@ -1,6 +1,6 @@
-function esc(s) {
+<% function esc(s) {
   return JSON.stringify(s || '')
-}
+} %>
 
 const shopConfig = {
   name: <%- esc(name) %>,

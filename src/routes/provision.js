@@ -2,7 +2,7 @@ import { Hono } from 'hono'
 import { supabase } from '../db.js'
 import { fetchShopData } from '../lib/shop-fetcher.js'
 import { renderTemplate } from '../lib/renderer.js'
-import { createProject, createDeployment, assignDomain } from '../vercel.js'
+import { createProject, createDeployment, assignDomain, deleteProject } from '../vercel.js'
 import { formatDomain, validateSubdomain } from '../lib/domain.js'
 import { getTemplate } from '../templates/registry.js'
 import { join } from 'path'
@@ -29,18 +29,19 @@ provisionRoutes.post('/', async (c) => {
 
     const existing = await supabase
       .from('storefront_deployments')
-      .select('id')
+      .select('*')
       .eq('shop_id', shop_id)
       .maybeSingle()
 
-    if (existing.data) {
-      return c.json({ error: 'Shop already has a storefront. Delete it first or use /update.' }, 409)
+    if (existing.data && existing.data.subdomain !== subdomain.toLowerCase()) {
+      return c.json({ error: 'Shop already has a storefront with a different subdomain. Delete it first.' }, 409)
     }
 
     const taken = await supabase
       .from('storefront_deployments')
       .select('id')
       .eq('subdomain', subdomain.toLowerCase())
+      .neq('shop_id', shop_id)
       .maybeSingle()
 
     if (taken.data) {
@@ -62,9 +63,6 @@ provisionRoutes.post('/', async (c) => {
       encoding: 'base64',
     }))
 
-    const projectName = `storefront-${subdomain.toLowerCase()}`
-    const project = await createProject(projectName)
-
     const domain = formatDomain(subdomain)
 
     if (!process.env.SUPABASE_ANON_KEY) {
@@ -77,43 +75,69 @@ provisionRoutes.post('/', async (c) => {
     }
 
     let deployment
-    try {
-      deployment = await createDeployment(projectName, project.id, vercelFiles, envVars)
-    } catch (err) {
-      console.error('Deployment failed, cleaning up project:', project.id)
-      try { await deleteProject(project.id) } catch (_) {}
-      throw err
+    let projectId
+
+    if (existing.data) {
+      projectId = existing.data.vercel_project_id
+      deployment = await createDeployment(subdomain.toLowerCase(), projectId, vercelFiles, envVars)
+    } else {
+      const projectName = `storefront-${subdomain.toLowerCase()}`
+      const project = await createProject(projectName)
+      projectId = project.id
+      try {
+        deployment = await createDeployment(projectName, projectId, vercelFiles, envVars)
+      } catch (err) {
+        console.error('Deployment failed, cleaning up project:', projectId)
+        try { await deleteProject(projectId) } catch (_) {}
+        throw err
+      }
     }
 
     let domainResult = null
     try {
-      domainResult = await assignDomain(project.id, domain)
+      domainResult = await assignDomain(projectId, domain)
     } catch (err) {
       console.warn('Domain assignment failed (will be retried):', err.message)
     }
 
     console.log(`Deployment response:`, JSON.stringify(deployment))
 
-    const { error: insertError } = await supabase.from('storefront_deployments').insert({
-      shop_id: rawData.shop.id,
-      template_id: template.id,
-      subdomain: subdomain.toLowerCase(),
-      vercel_project_id: project.id,
-      url: `https://${deployment.url}`,
-      domain: domainResult?.domain || domain,
-      status: 'deployed',
-    })
+    if (existing.data) {
+      const { error: updateError } = await supabase
+        .from('storefront_deployments')
+        .update({
+          template_id: template.id,
+          url: `https://${deployment.url}`,
+          domain: domainResult?.domain || domain,
+          status: 'deployed',
+        })
+        .eq('shop_id', shop_id)
 
-    if (insertError) {
-      console.error('Failed to save deployment record:', insertError.message)
+      if (updateError) {
+        console.error('Failed to update deployment record:', updateError.message)
+      }
+    } else {
+      const { error: insertError } = await supabase.from('storefront_deployments').insert({
+        shop_id: rawData.shop.id,
+        template_id: template.id,
+        subdomain: subdomain.toLowerCase(),
+        vercel_project_id: projectId,
+        url: `https://${deployment.url}`,
+        domain: domainResult?.domain || domain,
+        status: 'deployed',
+      })
+
+      if (insertError) {
+        console.error('Failed to save deployment record:', insertError.message)
+      }
     }
 
     return c.json({
       success: true,
       url: `https://${deployment.url}`,
       domain: domainResult?.domain || domain,
-      project_id: project.id,
-    }, 201)
+      project_id: projectId,
+    }, existing.data ? 200 : 201)
 
   } catch (err) {
     console.error('Provision error:', err)

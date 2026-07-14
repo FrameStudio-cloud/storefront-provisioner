@@ -6,6 +6,13 @@ const TEMPLATES = [
     previewImage: null,
     colors: { primary: '#7c3aed', accent: '#f59e0b' },
   },
+  {
+    id: 'clothing',
+    name: 'Fashion Storefront',
+    description: 'Lookbook hero, category strips, new arrivals carousel, and featured collection banner for clothing shops.',
+    previewImage: null,
+    colors: { primary: '#000000', accent: '#f59e0b' },
+  },
 ]
 
 export function listTemplates() {

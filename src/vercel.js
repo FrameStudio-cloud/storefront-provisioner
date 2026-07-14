@@ -43,9 +43,7 @@ export async function createDeployment(projectName, projectId, files, envVars = 
       target: 'production',
       files,
       projectSettings: { framework: 'vite' },
-      env: Object.entries(envVars).map(([key, value]) => ({
-        key, value, target: ['production', 'preview'], type: 'encrypted',
-      })),
+      env: envVars,
     }),
   })
   return { url: body.url, id: body.id, readyState: body.readyState }

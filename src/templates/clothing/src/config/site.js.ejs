@@ -20,9 +20,10 @@ const shopConfig = {
   accentColor: <%- esc(accentColor) %>,
   developerName: <%- esc(developerName) %>,
   developerWhatsapp: <%- esc(developerWhatsapp) %>,
-  slides: <%- JSON.stringify(slides) %>,
-  catalogue: <%- JSON.stringify(catalogue) %>,
-  announcements: <%- JSON.stringify(announcements) %>,
+  slides: <%- JSON.stringify(slides || []) %>,
+  catalogue: <%- JSON.stringify(catalogue || []) %>,
+  announcements: <%- JSON.stringify(announcements || []) %>,
+  socialLinks: <%- JSON.stringify(socialLinks || []) %>,
 }
 
 export default shopConfig

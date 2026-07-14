@@ -74,6 +74,7 @@ function mapToConfig(raw) {
     location: settings.store_address || '',
     address: settings.store_address || '',
     currency: settings.currency_symbol || 'KSh',
+    websiteUrl: settings.website_url || '',
     hours,
     primaryColor: '#000000',
     accentColor: '#f59e0b',
@@ -94,6 +95,7 @@ function mapToConfig(raw) {
       includes: item.includes || [],
     })),
     announcements,
+    socialLinks: [],
     developerName: 'Framestudio',
     developerWhatsapp: '254793302518',
   }

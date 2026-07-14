@@ -51,7 +51,7 @@ function mapToConfig(raw) {
       const t = (b.title || '').toLowerCase()
       if (t.includes('sale') || t.includes('offer')) type = 'sale'
       else if (t.includes('warn') || t.includes('alert')) type = 'warning'
-      return { message: b.message || b.title || '', type }
+      return { text: b.message || b.title || '', type }
     })
 
   const rawHours = settings.business_hours || {}
@@ -79,11 +79,11 @@ function mapToConfig(raw) {
     slides,
     catalogue: (catalogue || []).map((item) => ({
       id: item.id,
-      type: item.type || 'product',
+      variant: item.type || 'product',
       category: item.category || '',
-      name: item.name,
+      title: item.name,
       description: item.description || '',
-      image: item.image || '',
+      image: item.image ? { src: item.image } : null,
       price: item.price || 0,
       badge: item.badge || '',
       available: item.available !== false,

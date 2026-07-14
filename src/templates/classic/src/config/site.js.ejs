@@ -1,15 +1,22 @@
+function esc(s) {
+  return JSON.stringify(s || '')
+}
+
 const shopConfig = {
-  name: '<%= name %>',
-  nameAccent: '<%= nameAccent %>',
-  whatsapp: '<%= whatsapp %>',
-  phone: '<%= phone %>',
-  email: '<%= email %>',
-  address: '<%= address %>',
+  name: <%- esc(name) %>,
+  nameAccent: <%- esc(nameAccent) %>,
+  tagline: <%- esc(tagline) %>,
+  description: <%- esc(description) %>,
+  location: <%- esc(location) %>,
+  whatsapp: <%- esc(whatsapp) %>,
+  phone: <%- esc(phone) %>,
+  email: <%- esc(email) %>,
+  address: <%- esc(address) %>,
   hours: <%- JSON.stringify(hours || []) %>,
-  primaryColor: '<%= primaryColor %>',
-  accentColor: '<%= accentColor %>',
-  developerName: '<%= developerName %>',
-  developerWhatsapp: '<%= developerWhatsapp %>',
+  primaryColor: <%- esc(primaryColor) %>,
+  accentColor: <%- esc(accentColor) %>,
+  developerName: <%- esc(developerName) %>,
+  developerWhatsapp: <%- esc(developerWhatsapp) %>,
   slides: <%- JSON.stringify(slides) %>,
   catalogue: <%- JSON.stringify(catalogue) %>,
   announcements: <%- JSON.stringify(announcements) %>,

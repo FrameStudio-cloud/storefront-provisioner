@@ -67,13 +67,23 @@ provisionRoutes.post('/', async (c) => {
 
     const domain = formatDomain(subdomain)
 
+    if (!process.env.SUPABASE_ANON_KEY) {
+      throw new Error('SUPABASE_ANON_KEY is required — refusing to deploy with service role key in client bundle')
+    }
     const envVars = {
       VITE_SUPABASE_URL: process.env.SUPABASE_URL,
-      VITE_SUPABASE_ANON_KEY: process.env.SUPABASE_ANON_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY,
+      VITE_SUPABASE_ANON_KEY: process.env.SUPABASE_ANON_KEY,
       VITE_SHOP_SLUG: rawData.shop.slug,
     }
 
-    const deployment = await createDeployment(projectName, project.id, vercelFiles, envVars)
+    let deployment
+    try {
+      deployment = await createDeployment(projectName, project.id, vercelFiles, envVars)
+    } catch (err) {
+      console.error('Deployment failed, cleaning up project:', project.id)
+      try { await deleteProject(project.id) } catch (_) {}
+      throw err
+    }
 
     let domainResult = null
     try {

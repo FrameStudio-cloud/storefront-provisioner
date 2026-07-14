@@ -12,7 +12,7 @@ export async function getShopId() {
       .from('shops')
       .select('id')
       .eq('slug', slug)
-      .single()
+      .maybeSingle()
     if (data) {
       cachedShopId = data.id
       return data.id

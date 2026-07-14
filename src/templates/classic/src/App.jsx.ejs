@@ -21,7 +21,7 @@ export default function App() {
     <div className="min-h-screen bg-white">
 <% if (announcements.length > 0) { %>
       {c.announcements.map((a, i) => (
-        <AnnouncementBar key={i} message={a.message} variant={a.type} />
+        <AnnouncementBar key={i} text={a.text} variant={a.type} />
       ))}
 <% } %>
       <Navbar
@@ -36,7 +36,7 @@ export default function App() {
         <Hero
           variant="slideshow"
           slides={c.slides.map(s => ({
-            image: { src: s.image, alt: s.tag },
+            image: s.image,
             tag: s.tag,
             title: s.title,
             titleAccent: s.titleAccent,
@@ -71,9 +71,9 @@ export default function App() {
           brand={c.name}
           description={c.tagline || ''}
           contact={[
-            ...(c.whatsapp ? [{ icon: 'phone', label: 'WhatsApp', href: `https://wa.me/${c.whatsapp}`, content: c.whatsapp }] : []),
-            ...(c.email ? [{ icon: 'mail', label: 'Email', href: `mailto:${c.email}`, content: c.email }] : []),
-            ...(c.location ? [{ icon: 'mapPin', label: 'Location', content: c.location }] : []),
+            ...(c.whatsapp ? [{ icon: 'phone', label: 'WhatsApp', href: `https://wa.me/${c.whatsapp}`, value: c.whatsapp }] : []),
+            ...(c.email ? [{ icon: 'mail', label: 'Email', href: `mailto:${c.email}`, value: c.email }] : []),
+            ...(c.location ? [{ icon: 'mapPin', label: 'Location', value: c.location }] : []),
           ]}
           businessHours={c.hours && c.hours.length > 0 ? c.hours : undefined}
           developerCredit={{

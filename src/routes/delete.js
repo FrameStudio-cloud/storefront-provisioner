@@ -17,7 +17,11 @@ deleteRoutes.delete('/:shopId', async (c) => {
   if (!data) return c.json({ error: 'No deployment found for this shop' }, 404)
 
   if (data.vercel_project_id) {
-    await deleteProject(data.vercel_project_id)
+    try {
+      await deleteProject(data.vercel_project_id)
+    } catch (err) {
+      console.warn('Failed to delete Vercel project (continuing):', err.message)
+    }
   }
 
   await supabase.from('storefront_deployments').delete().eq('shop_id', shopId)

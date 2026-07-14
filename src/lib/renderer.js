@@ -45,7 +45,7 @@ function mapToConfig(raw) {
     }))
 
   const announcements = (banners || [])
-    .filter((b) => b.type === 'announcement' && b.active !== false)
+    .filter((b) => ['sale', 'info', 'alert'].includes(b.type) && b.active !== false)
     .map((b) => {
       let type = 'info'
       const t = (b.title || '').toLowerCase()

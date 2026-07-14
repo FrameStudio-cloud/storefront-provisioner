@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo } from 'react'
+import React, { useEffect, useMemo, useState } from 'react'
 import { Routes, Route, useParams, useNavigate } from 'react-router-dom'
 import {
   Navbar,
@@ -33,9 +33,16 @@ const categoryIcons = {
 
 function HomePage() {
   const navigate = useNavigate()
+  const [activeCategory, setActiveCategory] = useState('')
 
-  const categories = useMemo(() => {
-    return [...new Set(c.catalogue.map((item) => item.category).filter(Boolean))]
+  useEffect(() => {
+    const hash = window.location.hash
+    if (hash.startsWith('#catalogue')) {
+      const qs = hash.replace('#catalogue', '').replace(/^\?/, '')
+      const params = new URLSearchParams(qs)
+      const cat = params.get('category')
+      if (cat) setActiveCategory(cat)
+    }
   }, [])
 
   const featuredItems = useMemo(() => {
@@ -92,17 +99,17 @@ function HomePage() {
                   const iconName = categoryIcons[cat] || categoryIcons.default
                   const count = c.catalogue.filter((item) => item.category === cat).length
                   return (
-                    <a
-                      key={cat}
-                      href={`/#catalogue?category=${encodeURIComponent(cat)}`}
-                      className="flex flex-col items-center gap-2 min-w-[90px] snap-start p-4 rounded-2xl bg-gray-50 hover:bg-gray-100 border border-gray-200 hover:border-gray-300 transition-all group"
-                    >
-                      <div className="w-12 h-12 rounded-full bg-white shadow-sm flex items-center justify-center group-hover:shadow-md transition-shadow">
-                        <Icon name={iconName} size={20} className="text-gray-600" />
-                      </div>
-                      <span className="text-xs font-medium text-gray-700 whitespace-nowrap">{cat}</span>
-                      <span className="text-[10px] text-gray-400">{count} items</span>
-                    </a>
+              <button
+                key={cat}
+                onClick={() => { setActiveCategory(cat); navigate('/#catalogue'); }}
+                className="flex flex-col items-center gap-2 min-w-[90px] snap-start p-4 rounded-2xl bg-gray-50 hover:bg-gray-100 border border-gray-200 hover:border-gray-300 transition-all group text-left"
+              >
+                <div className="w-12 h-12 rounded-full bg-white shadow-sm flex items-center justify-center group-hover:shadow-md transition-shadow">
+                  <Icon name={iconName} size={20} className="text-gray-600" />
+                </div>
+                <span className="text-xs font-medium text-gray-700 whitespace-nowrap">{cat}</span>
+                <span className="text-[10px] text-gray-400">{count} items</span>
+              </button>
                   )
                 })}
               </div>
@@ -182,6 +189,8 @@ function HomePage() {
                 }))}
                 searchable
                 searchPlaceholder="Search products..."
+                selectedCategory={activeCategory}
+                onCategoryChange={setActiveCategory}
                 onItemClick={(item) => {
                   navigate(`/product/${item.id}`)
                 }}

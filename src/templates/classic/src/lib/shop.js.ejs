@@ -43,7 +43,7 @@ export async function getShopSettings() {
     .from('store_settings')
     .select('*')
     .eq('shop_id', shopId)
-    .single()
+    .maybeSingle()
   if (data) cachedSettings = data
   return data || null
 }

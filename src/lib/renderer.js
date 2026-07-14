@@ -80,6 +80,7 @@ function mapToConfig(raw) {
     secondaryColor: settings.secondary_color || '#4f46e5',
     accentColor: settings.accent_color || '#f59e0b',
     slides,
+    categories: [...new Set((catalogue || []).map((item) => item.category).filter(Boolean))],
     catalogue: (catalogue || []).map((item) => ({
       id: item.id,
       variant: item.type || 'product',

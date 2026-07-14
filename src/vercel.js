@@ -70,6 +70,20 @@ async function vercelFetch(path, options = {}) {
   }
 }
 
+async function waitForDeployment(deploymentId, maxWait = 120_000) {
+  const start = Date.now()
+  while (Date.now() - start < maxWait) {
+    await sleep(3000)
+    const body = await vercelFetch(`/v13/deployments/${deploymentId}`)
+    if (body.readyState === 'READY') return body
+    if (body.readyState === 'ERROR') {
+      throw new Error(`Deployment failed: ${body.error?.message || 'Build error — check Vercel dashboard'}`)
+    }
+    console.log(`Deployment ${deploymentId} state: ${body.readyState} (${Math.round((Date.now() - start) / 1000)}s)`)
+  }
+  throw new Error(`Deployment did not become READY within ${maxWait / 1000}s`)
+}
+
 export async function createProject(name) {
   const body = await vercelFetch('/v9/projects', {
     method: 'POST',
@@ -91,7 +105,21 @@ export async function createDeployment(projectName, projectId, files, envVars = 
     }),
   })
   console.log(`Deployment created: url=${body.url} id=${body.id} state=${body.readyState} alias=${JSON.stringify(body.alias)}`)
-  return { url: body.url, id: body.id, readyState: body.readyState }
+
+  if (body.readyState !== 'READY') {
+    const ready = await waitForDeployment(body.id)
+    return {
+      url: ready.alias?.[0] || ready.url,
+      id: ready.id,
+      readyState: ready.readyState,
+    }
+  }
+
+  return {
+    url: body.alias?.[0] || body.url,
+    id: body.id,
+    readyState: body.readyState,
+  }
 }
 
 export async function assignDomain(projectId, domain) {

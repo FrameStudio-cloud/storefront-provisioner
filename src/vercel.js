@@ -46,6 +46,7 @@ export async function createDeployment(projectName, projectId, files, envVars = 
       env: envVars,
     }),
   })
+  console.log(`Deployment created: url=${body.url} id=${body.id} state=${body.readyState} alias=${JSON.stringify(body.alias)}`)
   return { url: body.url, id: body.id, readyState: body.readyState }
 }
 

@@ -82,8 +82,10 @@ provisionRoutes.post('/', async (c) => {
       console.warn('Domain assignment failed (will be retried):', err.message)
     }
 
+    console.log(`Deployment response:`, JSON.stringify(deployment))
+
     const { error: insertError } = await supabase.from('storefront_deployments').insert({
-      shop_id,
+      shop_id: rawData.shop.id,
       template_id: template.id,
       subdomain: subdomain.toLowerCase(),
       vercel_project_id: project.id,

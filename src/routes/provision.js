@@ -69,11 +69,11 @@ provisionRoutes.post('/', async (c) => {
 
     const envVars = {
       VITE_SUPABASE_URL: process.env.SUPABASE_URL,
-      VITE_SUPABASE_ANON_KEY: process.env.SUPABASE_SERVICE_ROLE_KEY,
+      VITE_SUPABASE_ANON_KEY: process.env.SUPABASE_ANON_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY,
       VITE_SHOP_SLUG: rawData.shop.slug,
     }
 
-    const deployment = await createDeployment(project.id, vercelFiles, envVars)
+    const deployment = await createDeployment(projectName, project.id, vercelFiles, envVars)
 
     let domainResult = null
     try {

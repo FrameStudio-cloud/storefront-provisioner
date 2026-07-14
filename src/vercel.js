@@ -8,6 +8,8 @@ if (!VERCEL_TOKEN) {
 
 async function vercelFetch(path, options = {}) {
   const url = `${API}${path}`
+  console.log(`Vercel API: ${options.method || 'GET'} ${url}`)
+  if (options.body) console.log(`Request body: ${options.body}`)
   const res = await fetch(url, {
     ...options,
     headers: {
@@ -18,6 +20,7 @@ async function vercelFetch(path, options = {}) {
   })
   const body = await res.json()
   if (!res.ok) {
+    console.error(`Vercel API error ${res.status}:`, JSON.stringify(body))
     throw new Error(`Vercel API error ${res.status}: ${body.error?.message || JSON.stringify(body)}`)
   }
   return body
@@ -31,11 +34,12 @@ export async function createProject(name) {
   return { id: body.id, name: body.name }
 }
 
-export async function createDeployment(projectId, files, envVars = {}) {
-  const body = await vercelFetch('/v13/deployments', {
+export async function createDeployment(projectName, projectId, files, envVars = {}) {
+  const body = await vercelFetch(`/v13/deployments`, {
     method: 'POST',
     body: JSON.stringify({
-      projectId,
+      name: projectName,
+      project: projectId,
       target: 'production',
       files,
       projectSettings: { framework: 'vite' },

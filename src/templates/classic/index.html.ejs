@@ -4,20 +4,33 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta name="description" content="<%= (tagline || description || name) %>" />
+  <title><%= name %> — Storefront</title>
+
+  <link rel="canonical" href="https://<%= (websiteUrl || name.toLowerCase().replace(/\s+/g, '-') + '.keel.framestudio.co.ke') %>" />
+
+  <link rel="icon" type="image/png" sizes="32x32" href="https://keel.framestudio.co.ke/favicon-32x32.png" />
+  <link rel="apple-touch-icon" href="https://keel.framestudio.co.ke/apple-touch-icon.png" />
+  <meta name="theme-color" content="<%= primaryColor %>" />
+
   <meta property="og:title" content="<%= name %>" />
   <meta property="og:description" content="<%= (tagline || description || name) %>" />
   <meta property="og:type" content="website" />
   <meta property="og:url" content="https://<%= (websiteUrl || name.toLowerCase().replace(/\s+/g, '-') + '.keel.framestudio.co.ke') %>" />
-  <meta name="twitter:card" content="summary" />
+  <meta property="og:image" content="https://keel.framestudio.co.ke/keel-icon.webp" />
+  <meta name="twitter:card" content="summary_large_image" />
   <meta name="twitter:title" content="<%= name %>" />
   <meta name="twitter:description" content="<%= (tagline || description || name) %>" />
-  <title><%= name %> — Storefront</title>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+
   <style>
     :root {
       --color-primary: <%= primaryColor %>;
       --color-accent: <%= accentColor %>;
     }
   </style>
+
   <script type="application/ld+json">
   {
     "@context": "https://schema.org",

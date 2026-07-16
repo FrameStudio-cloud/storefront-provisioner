@@ -8,11 +8,10 @@ const shopConfig = {
   tagline: <%- esc(tagline) %>,
   description: <%- esc(description) %>,
   about: <%- esc(about) %>,
-  location: <%- esc(location) %>,
   whatsapp: <%- esc(whatsapp) %>,
   phone: <%- esc(phone) %>,
   email: <%- esc(email) %>,
-  address: <%- esc(address) %>,
+  location: <%- esc(location) %>,
   currency: <%- esc(currency) %>,
   websiteUrl: <%- esc(websiteUrl) %>,
   hours: <%- JSON.stringify(hours || []) %>,
@@ -23,6 +22,8 @@ const shopConfig = {
   slides: <%- JSON.stringify(slides) %>,
   catalogue: <%- JSON.stringify(catalogue) %>,
   announcements: <%- JSON.stringify(announcements) %>,
+  categories: <%- JSON.stringify(categories) %>,
+  socialLinks: <%- JSON.stringify(socialLinks) %>,
 }
 
 export default shopConfig

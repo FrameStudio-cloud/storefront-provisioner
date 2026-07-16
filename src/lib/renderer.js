@@ -37,8 +37,8 @@ function mapToConfig(raw) {
     .filter((b) => b.type === 'hero' && b.active !== false)
     .map((b) => ({
       image: b.image_url || '',
-      tag: b.title || '',
-      title: b.subtitle || '',
+      tag: b.subtitle || '',
+      title: b.title || '',
       description: b.message || '',
       buttonText: 'Shop Now',
       buttonLink: '#catalogue',

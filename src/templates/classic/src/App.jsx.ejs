@@ -1,182 +1,918 @@
-import React, { useEffect, useRef } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import { Routes, Route, useParams, useNavigate } from 'react-router-dom'
 import {
-  Navbar,
-  Hero,
-  Container,
-  Section,
-  CatalogueGrid,
-  Footer,
-  WhatsAppFloat,
-  BackToTop,
-<% if (announcements.length > 0) { %>  AnnouncementBar,<% } %>
-  Animate,
-  ProductDetail,
-} from 'cite-ui'
+  X, List, CaretLeft, CaretRight, MapPin,
+  Envelope, Clock, CaretUp, MagnifyingGlass, WhatsappLogo,
+  InstagramLogo, FacebookLogo, Globe,
+} from '@phosphor-icons/react'
 import shopConfig from './config/site'
 
 const c = shopConfig
+const COLORS = {
+  primary: c.primaryColor || '#1e3a5f',
+  accent: c.accentColor || '#d97706',
+}
+
+function Container({ children, className = '' }) {
+  return (
+    <div className={`max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 ${className}`}>
+      {children}
+    </div>
+  )
+}
+
+function Section({ children, bg = '', className = '', id }) {
+  return (
+    <section id={id} className={`py-16 md:py-24 ${bg} ${className}`}>
+      <Container>{children}</Container>
+    </section>
+  )
+}
+
+function ImageWithFallback({ src, alt, className = '', initials }) {
+  const [error, setError] = useState(false)
+  if (!src || error) {
+    return (
+      <div
+        className={`bg-gradient-to-br from-gray-100 to-gray-200 flex items-center justify-center ${className}`}
+        aria-label={alt || 'Image placeholder'}
+      >
+        <span className="text-gray-400 text-lg font-semibold select-none">
+          {initials || (alt ? alt.charAt(0).toUpperCase() : '?')}
+        </span>
+      </div>
+    )
+  }
+  return (
+    <img
+      src={src}
+      alt={alt || ''}
+      className={className}
+      onError={() => setError(true)}
+      loading="lazy"
+    />
+  )
+}
+
+function AnnouncementBar({ text, type }) {
+  const [dismissed, setDismissed] = useState(false)
+  if (dismissed || !text) return null
+
+  const styles = {
+    sale: 'bg-red-50 text-red-800 border-red-200',
+    warning: 'bg-amber-50 text-amber-800 border-amber-200',
+    info: 'bg-blue-50 text-blue-800 border-blue-200',
+    alert: 'bg-purple-50 text-purple-800 border-purple-200',
+  }
+
+  return (
+    <div className={`${styles[type] || styles.info} border-b text-sm py-2.5 px-4 text-center relative`}>
+      <span className="font-medium">{text}</span>
+      <button
+        onClick={() => setDismissed(true)}
+        className="absolute right-3 top-1/2 -translate-y-1/2 p-1 text-current opacity-50 hover:opacity-100 transition-opacity"
+        aria-label="Dismiss announcement"
+      >
+        <X size={14} weight="bold" />
+      </button>
+    </div>
+  )
+}
+
+function Nav() {
+  const [solid, setSolid] = useState(false)
+  const [menuOpen, setMenuOpen] = useState(false)
+
+  useEffect(() => {
+    const handleScroll = () => setSolid(window.scrollY > 64)
+    window.addEventListener('scroll', handleScroll, { passive: true })
+    return () => window.removeEventListener('scroll', handleScroll)
+  }, [])
+
+  return (
+    <>
+      <div className="h-16" />
+      <nav
+        className={`fixed top-0 left-0 right-0 z-50 transition-all duration-300 ${
+          solid ? 'bg-white shadow-sm' : 'bg-transparent'
+        }`}
+      >
+        <Container>
+          <div className="flex items-center justify-between h-16">
+            <a href="/" className={`text-lg font-bold transition-colors ${solid ? 'text-gray-900' : 'text-white'}`}>
+              {c.name}
+            </a>
+            <div className="hidden md:flex items-center gap-6">
+              <a
+                href="/"
+                className={`text-sm transition-colors ${solid ? 'text-gray-600 hover:text-gray-900' : 'text-white/80 hover:text-white'}`}
+              >
+                Home
+              </a>
+              <a
+                href="/#catalogue"
+                className={`text-sm transition-colors ${solid ? 'text-gray-600 hover:text-gray-900' : 'text-white/80 hover:text-white'}`}
+              >
+                Catalogue
+              </a>
+              {c.whatsapp && (
+                <a
+                  href={`https://wa.me/${c.whatsapp}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1.5 text-sm font-medium text-white bg-green-600 hover:bg-green-700 px-4 py-2 rounded-lg transition-colors"
+                >
+                  <WhatsappLogo size={16} weight="fill" />
+                  WhatsApp
+                </a>
+              )}
+            </div>
+            <button
+              className={`md:hidden p-2 rounded-lg transition-colors ${solid ? 'text-gray-900' : 'text-white'}`}
+              onClick={() => setMenuOpen(true)}
+              aria-label="Open menu"
+            >
+              <List size={24} />
+            </button>
+          </div>
+        </Container>
+      </nav>
+
+      {menuOpen && (
+        <div className="fixed inset-0 z-50 md:hidden">
+          <div
+            className="absolute inset-0 bg-black/30 animate-fade-in"
+            onClick={() => setMenuOpen(false)}
+          />
+          <div className="absolute right-0 top-0 bottom-0 w-72 bg-white shadow-xl p-6 animate-slide-in-right">
+            <div className="flex items-center justify-between mb-8">
+              <span className="text-lg font-bold text-gray-900">{c.name}</span>
+              <button
+                onClick={() => setMenuOpen(false)}
+                className="p-2 text-gray-400 hover:text-gray-900 transition-colors"
+                aria-label="Close menu"
+              >
+                <X size={20} />
+              </button>
+            </div>
+            <div className="flex flex-col gap-1">
+              <a
+                href="/"
+                onClick={() => setMenuOpen(false)}
+                className="px-4 py-3 text-base font-medium text-gray-900 hover:bg-gray-50 rounded-lg transition-colors"
+              >
+                Home
+              </a>
+              <a
+                href="/#catalogue"
+                onClick={() => setMenuOpen(false)}
+                className="px-4 py-3 text-base font-medium text-gray-900 hover:bg-gray-50 rounded-lg transition-colors"
+              >
+                Catalogue
+              </a>
+              {c.whatsapp && (
+                <a
+                  href={`https://wa.me/${c.whatsapp}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  onClick={() => setMenuOpen(false)}
+                  className="flex items-center gap-2 mt-4 text-white bg-green-600 hover:bg-green-700 px-4 py-3 rounded-lg font-medium transition-colors"
+                >
+                  <WhatsappLogo size={20} weight="fill" />
+                  Chat on WhatsApp
+                </a>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+    </>
+  )
+}
+
+function HeroSlideshow() {
+  const [current, setCurrent] = useState(0)
+  const [paused, setPaused] = useState(false)
+
+  const next = useCallback(() => {
+    setCurrent((prev) => (prev + 1) % c.slides.length)
+  }, [])
+
+  const prev = useCallback(() => {
+    setCurrent((prev) => (prev - 1 + c.slides.length) % c.slides.length)
+  }, [])
+
+  useEffect(() => {
+    if (paused || c.slides.length < 2) return
+    const timer = setInterval(next, 5000)
+    return () => clearInterval(timer)
+  }, [paused, next])
+
+  const slide = c.slides[current]
+
+  return (
+    <section
+      className="relative h-[70dvh] min-h-[400px] max-h-[700px] overflow-hidden"
+      onMouseEnter={() => setPaused(true)}
+      onMouseLeave={() => setPaused(false)}
+      onTouchStart={() => setPaused(true)}
+      onTouchEnd={() => setPaused(false)}
+    >
+      {c.slides.map((s, i) => (
+        <div
+          key={i}
+          className={`absolute inset-0 transition-opacity duration-700 ${
+            i === current ? 'opacity-100 hero-slide' : 'opacity-0 pointer-events-none'
+          }`}
+        >
+          <ImageWithFallback
+            src={s.image}
+            alt={s.title || `Slide ${i + 1}`}
+            className="w-full h-full object-cover"
+            initials={c.name.charAt(0)}
+          />
+        </div>
+      ))}
+      <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-black/30 to-transparent" />
+      <Container className="relative h-full flex flex-col justify-center">
+        <div className="max-w-2xl">
+          {slide.tag && (
+            <span className="inline-block text-xs font-semibold uppercase tracking-[0.15em] text-white/80 mb-3">
+              {slide.tag}
+            </span>
+          )}
+          <h1 className="text-4xl sm:text-5xl lg:text-6xl font-bold text-white leading-tight tracking-tight">
+            {slide.title}
+          </h1>
+          {slide.description && (
+            <p className="mt-4 text-base sm:text-lg text-white/80 max-w-xl leading-relaxed">
+              {slide.description}
+            </p>
+          )}
+          <a
+            href={slide.buttonLink || '#catalogue'}
+            className="inline-flex items-center gap-2 mt-6 px-6 py-3 rounded-lg font-medium text-white transition-colors"
+            style={{ backgroundColor: COLORS.accent }}
+          >
+            {slide.buttonText || 'Shop Now'}
+          </a>
+        </div>
+      </Container>
+      {c.slides.length > 1 && (
+        <>
+          <button
+            onClick={prev}
+            className="absolute left-4 top-1/2 -translate-y-1/2 p-2 rounded-full bg-white/20 hover:bg-white/30 text-white transition-colors backdrop-blur-sm"
+            aria-label="Previous slide"
+          >
+            <CaretLeft size={20} />
+          </button>
+          <button
+            onClick={next}
+            className="absolute right-4 top-1/2 -translate-y-1/2 p-2 rounded-full bg-white/20 hover:bg-white/30 text-white transition-colors backdrop-blur-sm"
+            aria-label="Next slide"
+          >
+            <CaretRight size={20} />
+          </button>
+          <div className="absolute bottom-6 left-1/2 -translate-x-1/2 flex gap-2">
+            {c.slides.map((_, i) => (
+              <button
+                key={i}
+                onClick={() => setCurrent(i)}
+                className={`w-2.5 h-2.5 rounded-full transition-all ${
+                  i === current ? 'bg-white scale-110' : 'bg-white/40 hover:bg-white/60'
+                }`}
+                aria-label={`Go to slide ${i + 1}`}
+              />
+            ))}
+          </div>
+        </>
+      )}
+    </section>
+  )
+}
+
+function HeroStatic() {
+  return (
+    <section className="relative min-h-[70dvh] flex items-center overflow-hidden">
+      <div
+        className="absolute inset-0"
+        style={{
+          background: `linear-gradient(135deg, ${COLORS.primary} 0%, ${COLORS.primary}cc 50%, ${COLORS.primary}66 100%)`,
+        }}
+      />
+      <div
+        className="absolute inset-0 opacity-10"
+        style={{
+          backgroundImage: `radial-gradient(circle at 25% 50%, white 1px, transparent 1px)`,
+          backgroundSize: '40px 40px',
+        }}
+      />
+      <Container className="relative">
+        <div className="max-w-2xl">
+          <h1 className="text-4xl sm:text-5xl lg:text-6xl font-bold text-white leading-tight tracking-tight">
+            {c.name}
+            {c.nameAccent && (
+              <span className="block mt-1" style={{ color: COLORS.accent }}>
+                {c.nameAccent}
+              </span>
+            )}
+          </h1>
+          {(c.tagline || c.description) && (
+            <p className="mt-4 text-lg text-white/80 max-w-xl leading-relaxed">
+              {c.tagline || c.description}
+            </p>
+          )}
+          <div className="flex flex-wrap gap-3 mt-8">
+            <a
+              href="/#catalogue"
+              className="inline-flex items-center gap-2 px-6 py-3 rounded-lg font-medium text-white transition-colors"
+              style={{ backgroundColor: COLORS.accent }}
+            >
+              View Catalogue
+            </a>
+            {c.whatsapp && (
+              <a
+                href={`https://wa.me/${c.whatsapp}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-2 px-6 py-3 rounded-lg font-medium text-gray-900 bg-white hover:bg-gray-100 transition-colors"
+              >
+                <WhatsappLogo size={18} weight="fill" className="text-green-600" />
+                Chat with Us
+              </a>
+            )}
+          </div>
+        </div>
+      </Container>
+    </section>
+  )
+}
+
+function Hero() {
+  return c.slides && c.slides.length > 0 ? <HeroSlideshow /> : <HeroStatic />
+}
+
+function AboutSection() {
+  if (!c.about) return null
+
+  return (
+    <Section bg="bg-gray-50" id="about">
+      <div className="max-w-3xl mx-auto text-center">
+        <h2 className="text-2xl sm:text-3xl font-bold text-gray-900">
+          About {c.name}
+        </h2>
+        <p className="mt-4 text-base text-gray-600 leading-relaxed">
+          {c.about}
+        </p>
+      </div>
+    </Section>
+  )
+}
+
+function SearchBar({ value, onChange, placeholder }) {
+  return (
+    <div className="relative">
+      <MagnifyingGlass
+        size={18}
+        className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400"
+      />
+      <input
+        type="text"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder={placeholder || 'Search products...'}
+        className="w-full pl-10 pr-4 py-3 border border-gray-200 rounded-xl text-sm text-gray-900 placeholder-gray-400 focus:outline-none transition-shadow"
+        onFocus={(e) => {
+          e.target.style.boxShadow = `0 0 0 2px ${COLORS.accent}33`
+          e.target.style.borderColor = COLORS.accent
+        }}
+        onBlur={(e) => {
+          e.target.style.boxShadow = ''
+          e.target.style.borderColor = ''
+        }}
+      />
+    </div>
+  )
+}
+
+function CategoryChips({ categories, selected, onChange }) {
+  const all = ['All', ...categories]
+
+  return (
+    <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-none -mx-4 px-4 sm:mx-0 sm:px-0">
+      {all.map((cat) => {
+        const isActive = cat === selected || (!selected && cat === 'All')
+        return (
+          <button
+            key={cat}
+            onClick={() => onChange(cat === 'All' ? '' : cat)}
+            className={`flex-shrink-0 px-4 py-2 rounded-full text-sm font-medium transition-all whitespace-nowrap ${
+              isActive
+                ? 'text-white shadow-sm'
+                : 'text-gray-600 bg-gray-100 hover:bg-gray-200'
+            }`}
+            style={isActive ? { backgroundColor: COLORS.primary } : {}}
+          >
+            {cat}
+            {cat !== 'All' && (
+              <span className="ml-1 text-xs opacity-70">
+                ({c.catalogue.filter((item) => item.category === cat).length})
+              </span>
+            )}
+          </button>
+        )
+      })}
+    </div>
+  )
+}
+
+function ProductCard({ item }) {
+  const navigate = useNavigate()
+
+  return (
+    <article
+      className="product-card bg-white rounded-xl border border-gray-100 overflow-hidden cursor-pointer"
+      onClick={() => navigate(`/product/${item.id}`)}
+      role="button"
+      tabIndex={0}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') navigate(`/product/${item.id}`)
+      }}
+    >
+      <div className="relative aspect-square overflow-hidden bg-gray-50">
+        <ImageWithFallback
+          src={item.image?.src}
+          alt={item.title}
+          className="w-full h-full object-cover"
+          initials={item.title?.charAt(0)}
+        />
+        {item.badge && (
+          <span
+            className="absolute top-2 left-2 px-2.5 py-1 rounded-md text-xs font-semibold text-white"
+            style={{ backgroundColor: COLORS.accent }}
+          >
+            {item.badge}
+          </span>
+        )}
+      </div>
+      <div className="p-4">
+        <h3 className="text-sm font-semibold text-gray-900 line-clamp-2 leading-snug min-h-[2.5em]">
+          {item.title}
+        </h3>
+        <p className="mt-1.5 text-base font-bold" style={{ color: COLORS.primary }}>
+          {c.currency} {Number(item.price).toLocaleString()}
+        </p>
+        {item.category && (
+          <span className="mt-1.5 inline-block text-xs text-gray-400 bg-gray-50 px-2 py-0.5 rounded">
+            {item.category}
+          </span>
+        )}
+      </div>
+    </article>
+  )
+}
+
+function EmptyState({ searchTerm }) {
+  return (
+    <div className="text-center py-16">
+      <div className="w-16 h-16 mx-auto rounded-full bg-gray-100 flex items-center justify-center mb-4">
+        <MagnifyingGlass size={24} className="text-gray-400" />
+      </div>
+      <h3 className="text-lg font-semibold text-gray-900">
+        {searchTerm ? `No products matching "${searchTerm}"` : 'No products yet'}
+      </h3>
+      <p className="mt-1 text-sm text-gray-500">
+        {searchTerm
+          ? 'Try a different search term or category.'
+          : 'Check back soon for new arrivals.'}
+      </p>
+    </div>
+  )
+}
+
+function CatalogueSection() {
+  const [search, setSearch] = useState('')
+  const [selectedCategory, setSelectedCategory] = useState('')
+
+  const filtered = useMemo(() => {
+    let result = c.catalogue.filter((item) => item.available !== false)
+    if (search.trim()) {
+      const q = search.toLowerCase()
+      result = result.filter(
+        (item) =>
+          item.title.toLowerCase().includes(q) ||
+          (item.category && item.category.toLowerCase().includes(q)) ||
+          (item.description && item.description.toLowerCase().includes(q))
+      )
+    }
+    if (selectedCategory) {
+      result = result.filter((item) => item.category === selectedCategory)
+    }
+    return result
+  }, [search, selectedCategory])
+
+  return (
+    <Section bg="bg-gray-50" id="catalogue">
+      <div>
+        <div className="text-center mb-10">
+          <h2 className="text-2xl sm:text-3xl font-bold text-gray-900">
+            Our Catalogue
+          </h2>
+          <p className="mt-2 text-gray-500 max-w-xl mx-auto">
+            Browse our products and order directly via WhatsApp
+          </p>
+        </div>
+
+        <div className="max-w-md mx-auto mb-6">
+          <SearchBar
+            value={search}
+            onChange={setSearch}
+            placeholder="Search products..."
+          />
+        </div>
+
+        {c.categories && c.categories.length > 0 && (
+          <div className="mb-8">
+            <CategoryChips
+              categories={c.categories}
+              selected={selectedCategory}
+              onChange={setSelectedCategory}
+            />
+          </div>
+        )}
+
+        <div className="flex items-center justify-between mb-4">
+          <p className="text-sm text-gray-500">
+            Showing {filtered.length} of {c.catalogue.length} products
+          </p>
+        </div>
+
+        {filtered.length > 0 ? (
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 md:gap-6">
+            {filtered.map((item) => (
+              <ProductCard key={item.id} item={item} />
+            ))}
+          </div>
+        ) : (
+          <EmptyState searchTerm={search} />
+        )}
+      </div>
+    </Section>
+  )
+}
+
+const SOCIAL_ICONS = {
+  instagram: InstagramLogo,
+  facebook: FacebookLogo,
+  tiktok: Globe,
+}
+
+function Footer() {
+  return (
+    <footer className="bg-white border-t border-gray-100">
+      <Container>
+        <div className="py-12 md:py-16">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-8">
+            <div>
+              <h3 className="text-lg font-bold text-gray-900">{c.name}</h3>
+              {(c.tagline || c.description) && (
+                <p className="mt-2 text-sm text-gray-500 leading-relaxed">
+                  {c.tagline || c.description}
+                </p>
+              )}
+              {c.location && (
+                <div className="mt-3 flex items-start gap-2 text-sm text-gray-500">
+                  <MapPin size={14} className="mt-0.5 flex-shrink-0" />
+                  <span>{c.location}</span>
+                </div>
+              )}
+            </div>
+            <div>
+              <h4 className="text-sm font-semibold text-gray-900 uppercase tracking-wider mb-4">
+                Contact
+              </h4>
+              <div className="space-y-3">
+                {c.whatsapp && (
+                  <a
+                    href={`https://wa.me/${c.whatsapp}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center gap-2 text-sm text-gray-600 hover:text-green-600 transition-colors"
+                  >
+                    <WhatsappLogo size={16} weight="fill" />
+                    {c.whatsapp}
+                  </a>
+                )}
+                {c.email && (
+                  <a
+                    href={`mailto:${c.email}`}
+                    className="flex items-center gap-2 text-sm text-gray-600 hover:text-gray-900 transition-colors"
+                  >
+                    <Envelope size={16} />
+                    {c.email}
+                  </a>
+                )}
+                {c.phone && (
+                  <div className="flex items-center gap-2 text-sm text-gray-600">
+                    <Phone size={16} />
+                    {c.phone}
+                  </div>
+                )}
+              </div>
+            </div>
+            {c.hours && c.hours.length > 0 && (
+              <div>
+                <h4 className="text-sm font-semibold text-gray-900 uppercase tracking-wider mb-4">
+                  Hours
+                </h4>
+                <div className="space-y-2">
+                  {c.hours.map((h, i) => (
+                    <div key={i} className="flex items-center gap-2 text-sm text-gray-600">
+                      <Clock size={14} className="flex-shrink-0" />
+                      <span className="min-w-[3rem] font-medium">{h.day}</span>
+                      <span>{h.hours}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+            {c.socialLinks && c.socialLinks.length > 0 && (
+              <div>
+                <h4 className="text-sm font-semibold text-gray-900 uppercase tracking-wider mb-4">
+                  Follow Us
+                </h4>
+                <div className="space-y-3">
+                  {c.socialLinks.map((link, i) => {
+                    const Icon = SOCIAL_ICONS[link.icon] || Globe
+                    return (
+                      <a
+                        key={i}
+                        href={link.href}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex items-center gap-2 text-sm text-gray-600 hover:text-gray-900 transition-colors"
+                      >
+                        <Icon size={16} />
+                        {link.label}
+                      </a>
+                    )
+                  })}
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+        <div className="border-t border-gray-100 py-6 flex flex-col sm:flex-row items-center justify-between gap-2 text-xs text-gray-400">
+          <span>&copy; {new Date().getFullYear()} {c.name}. All rights reserved.</span>
+          <span>
+            Powered by{' '}
+            <a
+              href={`https://wa.me/${c.developerWhatsapp}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-gray-500 hover:text-gray-700 transition-colors"
+            >
+              {c.developerName}
+            </a>
+          </span>
+        </div>
+      </Container>
+    </footer>
+  )
+}
+
+function WhatsAppFloat() {
+  const [visible, setVisible] = useState(false)
+
+  useEffect(() => {
+    const handleScroll = () => setVisible(window.scrollY > 200)
+    window.addEventListener('scroll', handleScroll, { passive: true })
+    return () => window.removeEventListener('scroll', handleScroll)
+  }, [])
+
+  if (!c.whatsapp) return null
+
+  return (
+    <a
+      href={`https://wa.me/${c.whatsapp}`}
+      target="_blank"
+      rel="noopener noreferrer"
+      className={`whatsapp-float fixed bottom-6 right-6 z-40 flex items-center gap-2 px-4 py-3 rounded-full text-white shadow-lg hover:shadow-xl transition-shadow ${
+        visible ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'
+      }`}
+      style={{ backgroundColor: '#25D366' }}
+      aria-label="Chat on WhatsApp"
+    >
+      <WhatsappLogo size={20} weight="fill" />
+      <span className="text-sm font-medium hidden sm:inline">Chat on WhatsApp</span>
+    </a>
+  )
+}
+
+function BackToTop() {
+  const [visible, setVisible] = useState(false)
+
+  useEffect(() => {
+    const handleScroll = () => setVisible(window.scrollY > 400)
+    window.addEventListener('scroll', handleScroll, { passive: true })
+    return () => window.removeEventListener('scroll', handleScroll)
+  }, [])
+
+  return (
+    <button
+      onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
+      className={`back-to-top fixed bottom-6 left-6 z-40 p-3 rounded-full bg-white border border-gray-200 shadow-sm hover:shadow-md text-gray-600 hover:text-gray-900 transition-all ${
+        visible ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'
+      }`}
+      aria-label="Back to top"
+    >
+      <CaretUp size={18} />
+    </button>
+  )
+}
+
+function ProductDetail() {
+  const { id } = useParams()
+  const navigate = useNavigate()
+  const product = c.catalogue.find((item) => String(item.id) === String(id))
+
+  useEffect(() => {
+    document.title = product ? `${product.title} — ${c.name}` : `Product not found — ${c.name}`
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+  }, [product])
+
+  if (!product) {
+    return (
+      <Section>
+        <div className="text-center py-16">
+          <div className="w-16 h-16 mx-auto rounded-full bg-gray-100 flex items-center justify-center mb-4">
+            <span className="text-2xl text-gray-400 font-semibold">?</span>
+          </div>
+          <h2 className="text-xl font-semibold text-gray-900">Product not found</h2>
+          <p className="mt-2 text-sm text-gray-500">
+            This product may have been removed or is no longer available.
+          </p>
+          <button
+            onClick={() => navigate('/')}
+            className="mt-6 inline-flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-medium text-white transition-colors"
+            style={{ backgroundColor: COLORS.primary }}
+          >
+            <CaretLeft size={16} />
+            Back to Catalogue
+          </button>
+        </div>
+      </Section>
+    )
+  }
+
+  const related = c.catalogue.filter(
+    (item) => item.id !== product.id && item.category === product.category && item.available !== false
+  ).slice(0, 4)
+
+  return (
+    <Section>
+      <button
+        onClick={() => navigate('/')}
+        className="inline-flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-900 transition-colors mb-6"
+      >
+        <CaretLeft size={16} />
+        Back to Catalogue
+      </button>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-8 lg:gap-12">
+        <div className="rounded-xl overflow-hidden bg-gray-50">
+          <ImageWithFallback
+            src={product.image?.src}
+            alt={product.title}
+            className="w-full h-full max-h-[500px] object-contain"
+            initials={product.title?.charAt(0)}
+          />
+        </div>
+        <div className="flex flex-col">
+          {product.badge && (
+            <span
+              className="inline-self-start px-3 py-1 rounded-md text-xs font-semibold text-white mb-3"
+              style={{ backgroundColor: COLORS.accent }}
+            >
+              {product.badge}
+            </span>
+          )}
+          <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 leading-tight">
+            {product.title}
+          </h1>
+          <p className="mt-3 text-2xl font-bold" style={{ color: COLORS.primary }}>
+            {c.currency} {Number(product.price).toLocaleString()}
+          </p>
+          {product.description && (
+            <p className="mt-4 text-sm text-gray-600 leading-relaxed">
+              {product.description}
+            </p>
+          )}
+          {product.specs && product.specs.length > 0 && (
+            <div className="mt-6">
+              <h3 className="text-sm font-semibold text-gray-900 uppercase tracking-wider mb-3">
+                Specifications
+              </h3>
+              <div className="divide-y divide-gray-100 border border-gray-100 rounded-lg overflow-hidden">
+                {product.specs.map((spec, i) => (
+                  <div key={i} className="flex px-4 py-2.5 text-sm">
+                    <span className="w-1/2 text-gray-500 font-medium">{spec.label || spec.name}</span>
+                    <span className="w-1/2 text-gray-900">{spec.value}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+          {product.includes && product.includes.length > 0 && (
+            <div className="mt-6">
+              <h3 className="text-sm font-semibold text-gray-900 uppercase tracking-wider mb-3">
+                What's Included
+              </h3>
+              <ul className="space-y-1.5">
+                {product.includes.map((item, i) => (
+                  <li key={i} className="flex items-start gap-2 text-sm text-gray-600">
+                    <span className="mt-0.5 w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ backgroundColor: COLORS.accent }} />
+                    {item}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+          <div className="mt-auto pt-6">
+            <a
+              href={`https://wa.me/${c.whatsapp}?text=${encodeURIComponent(`Hi, I'm interested in ${product.title} (${c.currency} ${Number(product.price).toLocaleString()})`)}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center justify-center gap-2 w-full px-6 py-3.5 rounded-xl text-base font-semibold text-white transition-colors"
+              style={{ backgroundColor: '#25D366' }}
+            >
+              <WhatsappLogo size={20} weight="fill" />
+              Order via WhatsApp
+            </a>
+          </div>
+        </div>
+      </div>
+    </Section>
+  )
+}
+
+function RelatedProducts() {
+  const { id } = useParams()
+  const product = c.catalogue.find((item) => String(item.id) === String(id))
+  if (!product) return null
+
+  const related = c.catalogue.filter(
+    (item) => item.id !== product.id && item.category === product.category && item.available !== false
+  ).slice(0, 4)
+
+  if (related.length === 0) return null
+
+  return (
+    <Section bg="bg-gray-50">
+      <h2 className="text-xl sm:text-2xl font-bold text-gray-900 mb-8">
+        You Might Also Like
+      </h2>
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 md:gap-6">
+        {related.map((item) => (
+          <ProductCard key={item.id} item={item} />
+        ))}
+      </div>
+    </Section>
+  )
+}
 
 function HomePage() {
-  const navigate = useNavigate()
-  const catalogueRef = useRef(null)
-
   return (
     <div className="min-h-screen bg-white">
 <% if (announcements.length > 0) { %>
       {c.announcements.map((a, i) => (
-        <AnnouncementBar key={i} text={a.text} variant={a.type} />
+        <AnnouncementBar key={i} text={a.text} type={a.type} />
       ))}
 <% } %>
-      <Navbar
-        logo={c.name}
-        variant="transparent"
-        links={[
-          { label: 'Home', href: '/' },
-          { label: 'Catalogue', href: '/#catalogue' },
-        ]}
-        whatsapp={c.whatsapp}
-      />
-
-      <section id="home">
-<% if (slides.length > 0) { %>
-        <Hero
-          variant="slideshow"
-          slides={c.slides.map(s => ({
-            image: s.image,
-            tag: s.tag,
-            title: s.title,
-            titleAccent: s.titleAccent,
-            description: s.description,
-            buttonText: s.buttonText,
-            buttonLink: s.buttonLink,
-          }))}
-        />
-<% } else { %>
-        <Hero
-          title={c.name}
-          titleAccent={c.nameAccent}
-          description={c.tagline || c.description}
-          primaryCta={{ label: 'View Catalogue', href: '/#catalogue' }}
-        />
-<% } %>
-      </section>
-
+      <Nav />
+      <Hero />
 <% if (about) { %>
-      <Section bg="bg-gray-50">
-        <Container maxWidth="lg">
-          <Animate type="slideUp" trigger="viewport">
-            <div className="text-center max-w-3xl mx-auto">
-              <h2 className="text-2xl sm:text-3xl font-bold text-gray-900 mb-4">About <%= c.name %></h2>
-              <p className="text-base text-gray-600 leading-relaxed"><%= about %></p>
-            </div>
-          </Animate>
-        </Container>
-      </Section>
+      <AboutSection />
 <% } %>
-
 <% if (catalogue.length > 0) { %>
-      <section id="catalogue" ref={catalogueRef}>
-        <Section bg="bg-gray-50">
-          <div className="mb-8">
-            <h2 className="text-2xl sm:text-3xl font-bold text-gray-900">Our Catalogue</h2>
-            <p className="text-gray-500 mt-2 max-w-2xl">Browse our products and order via WhatsApp</p>
-          </div>
-          <Animate type="slideUp" trigger="viewport">
-            <CatalogueGrid
-              items={c.catalogue.map(item => ({
-                ...item,
-                cta: c.whatsapp
-                  ? {
-                      label: 'View Details',
-                      onClick: () => navigate(`/product/${item.id}`),
-                    }
-                  : undefined,
-              }))}
-              searchable
-              searchPlaceholder="Search products..."
-              onItemClick={(item) => {
-                navigate(`/product/${item.id}`)
-              }}
-            />
-          </Animate>
-        </Section>
-      </section>
+      <CatalogueSection />
 <% } %>
-
-      <footer id="contact">
-        <Footer
-          brand={c.name}
-          description={c.tagline || ''}
-          contact={[
-            ...(c.whatsapp ? [{ icon: 'phone', label: 'WhatsApp', href: `https://wa.me/${c.whatsapp}`, value: c.whatsapp }] : []),
-            ...(c.email ? [{ icon: 'mail', label: 'Email', href: `mailto:${c.email}`, value: c.email }] : []),
-            ...(c.location ? [{ icon: 'mapPin', label: 'Location', value: c.location }] : []),
-          ]}
-          businessHours={c.hours && c.hours.length > 0 ? c.hours : undefined}
-          developerCredit={{
-            name: c.developerName,
-            whatsapp: c.developerWhatsapp,
-          }}
-        />
-      </footer>
-
-      <WhatsAppFloat phoneNumber={c.whatsapp} />
+      <Footer />
+      <WhatsAppFloat />
       <BackToTop />
     </div>
   )
 }
 
 function ProductPage() {
-  const { id } = useParams()
-  const navigate = useNavigate()
-  const product = c.catalogue.find(item => String(item.id) === String(id))
-
-  useEffect(() => {
-    document.title = product
-      ? `${product.title} — ${c.name}`
-      : `Product not found — ${c.name}`
-  }, [product])
-
   return (
     <div className="min-h-screen bg-white">
-      <Navbar
-        logo={c.name}
-        variant="default"
-        links={[
-          { label: 'Home', href: '/' },
-          { label: 'Catalogue', href: '/#catalogue' },
-        ]}
-        whatsapp={c.whatsapp}
-      />
-
-      <Section padding="md">
-        <Container>
-          <ProductDetail
-            product={product}
-            onBack={() => navigate('/')}
-            onWhatsApp={c.whatsapp}
-            currency={c.currency}
-          />
-        </Container>
-      </Section>
-
-      <Footer
-        brand={c.name}
-        description={c.tagline || ''}
-        contact={[
-          ...(c.whatsapp ? [{ icon: 'phone', label: 'WhatsApp', href: `https://wa.me/${c.whatsapp}`, value: c.whatsapp }] : []),
-          ...(c.email ? [{ icon: 'mail', label: 'Email', href: `mailto:${c.email}`, value: c.email }] : []),
-          ...(c.location ? [{ icon: 'mapPin', label: 'Location', value: c.location }] : []),
-        ]}
-        businessHours={c.hours && c.hours.length > 0 ? c.hours : undefined}
-        developerCredit={{
-          name: c.developerName,
-          whatsapp: c.developerWhatsapp,
-        }}
-      />
-
-      <WhatsAppFloat phoneNumber={c.whatsapp} />
+      <Nav />
+      <ProductDetail />
+      <RelatedProducts />
+      <Footer />
+      <WhatsAppFloat />
       <BackToTop />
     </div>
   )

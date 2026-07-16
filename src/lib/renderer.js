@@ -28,6 +28,7 @@ const SECTION_REGISTRY = {
   'about': 'AboutSection',
   'announcements': 'Announcements',
   'back-to-top': 'BackToTop',
+  'catalogue/carousel': 'Carousel',
   'catalogue/grid': 'CatalogueGrid',
   'catalogue/product-detail': 'ProductDetail',
   'catalogue/related': 'RelatedProducts',

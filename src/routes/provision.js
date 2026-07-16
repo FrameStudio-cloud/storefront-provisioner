@@ -1,7 +1,7 @@
 import { Hono } from 'hono'
 import { supabase } from '../db.js'
 import { fetchShopData } from '../lib/shop-fetcher.js'
-import { renderTemplate } from '../lib/renderer.js'
+import { renderTemplate, renderFromSections } from '../lib/renderer.js'
 import { createProject, createDeployment, assignDomain, deleteProject } from '../vercel.js'
 import { formatDomain, validateSubdomain } from '../lib/domain.js'
 import { getTemplate } from '../templates/registry.js'
@@ -16,7 +16,7 @@ export const provisionRoutes = new Hono()
 
 provisionRoutes.post('/', async (c) => {
   try {
-    const { shop_id, template_id, subdomain } = await c.req.json()
+    const { shop_id, template_id, subdomain, sections } = await c.req.json()
 
     if (!shop_id) return c.json({ error: 'shop_id is required' }, 400)
     if (!subdomain) return c.json({ error: 'subdomain is required' }, 400)
@@ -50,12 +50,21 @@ provisionRoutes.post('/', async (c) => {
 
     const rawData = await fetchShopData(shop_id)
 
-    const templateDir = join(TEMPLATES_DIR, template.id)
+    // For custom/section-based templates, use the classic template dir as base
+    const baseTemplateId = (sections && sections.length > 0) ? 'classic' : template.id
+    const templateDir = join(TEMPLATES_DIR, baseTemplateId)
     if (!existsSync(templateDir)) {
-      return c.json({ error: `Template directory not found: ${template.id}` }, 500)
+      return c.json({ error: `Template directory not found: ${baseTemplateId}` }, 500)
     }
 
-    const renderedFiles = renderTemplate(templateDir, rawData)
+    let renderedFiles
+    if (sections && sections.length > 0) {
+      const sectionsDir = process.env.SECTIONS_DIR || join(TEMPLATES_DIR, '..', '..', 'storefront-sections', 'sections')
+      const blueprint = buildBlueprint(sections)
+      renderedFiles = renderFromSections(templateDir, sectionsDir, rawData, blueprint)
+    } else {
+      renderedFiles = renderTemplate(templateDir, rawData)
+    }
 
     const vercelFiles = Object.entries(renderedFiles).map(([path, data]) => ({
       file: path.replace(/\\/g, '/'),
@@ -144,3 +153,23 @@ provisionRoutes.post('/', async (c) => {
     return c.json({ error: err.message }, 500)
   }
 })
+
+// Build a blueprint from an array of section IDs.
+// Sections on both pages: navbar/*, footer/*, announcements, whatsapp-float, back-to-top
+// Product-only: catalogue/product-detail, catalogue/related
+// Everything else goes on home page only
+function buildBlueprint(sectionIds) {
+  const productOnly = ['catalogue/product-detail', 'catalogue/related']
+  const bothPages = ['announcements', 'whatsapp-float', 'back-to-top']
+
+  const home = sectionIds.filter(id => !productOnly.includes(id))
+
+  const product = sectionIds.filter(id =>
+    productOnly.includes(id) ||
+    bothPages.includes(id) ||
+    id.startsWith('navbar/') ||
+    id.startsWith('footer/')
+  )
+
+  return { home, product }
+}

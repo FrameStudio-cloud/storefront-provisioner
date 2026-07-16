@@ -13,6 +13,13 @@ const TEMPLATES = [
     previewImage: null,
     colors: { primary: '#000000', accent: '#f59e0b' },
   },
+  {
+    id: 'custom',
+    name: 'Custom Storefront',
+    description: 'Section-based storefront composed from individual section components. Uses the classic template as base with a generated App.jsx.',
+    previewImage: null,
+    colors: { primary: '#2563eb', accent: '#f59e0b' },
+  },
 ]
 
 export function listTemplates() {

@@ -1,0 +1,479 @@
+import { useState, useEffect, useMemo, useCallback } from 'react'
+import { Routes, Route, useParams, useNavigate } from 'react-router-dom'
+import {
+  X, List, CaretLeft, CaretRight, MapPin,
+  Envelope, Clock, CaretUp, MagnifyingGlass, WhatsappLogo,
+  InstagramLogo, FacebookLogo, Globe,
+} from '@phosphor-icons/react'
+import shopConfig from './config/site'
+
+const c = shopConfig
+
+const COLORS = {
+  primary: c.primaryColor || '#0f172a',
+  accent: c.accentColor || '#f59e0b',
+}
+
+function Container({ children, className = '' }) {
+  return (
+    <div className={`max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 ${className}`}>
+      {children}
+    </div>
+  )
+}
+
+function Nav() {
+  const [open, setOpen] = useState(false)
+  const [scrolled, setScrolled] = useState(false)
+  useEffect(() => {
+    const onScroll = () => setScrolled(window.scrollY > 20)
+    window.addEventListener('scroll', onScroll, { passive: true })
+    return () => window.removeEventListener('scroll', onScroll)
+  }, [])
+
+  return (
+    <nav className={`fixed top-0 left-0 right-0 z-50 transition-all duration-300 ${scrolled ? 'bg-white/95 backdrop-blur-md shadow-sm' : 'bg-transparent'}`}>
+      <Container className="flex items-center justify-between h-16">
+        <a href="/" className={`text-lg font-bold ${scrolled ? 'text-gray-900' : 'text-white'}`}>
+          {c.name}
+        </a>
+        <div className="hidden sm:flex items-center gap-6">
+          <a href="/" className={`text-sm transition-colors ${scrolled ? 'text-gray-600 hover:text-gray-900' : 'text-white/80 hover:text-white'}`}>Home</a>
+          <a href="/#catalogue" className={`text-sm transition-colors ${scrolled ? 'text-gray-600 hover:text-gray-900' : 'text-white/80 hover:text-white'}`}>Products</a>
+          {c.whatsapp && (
+            <a href={`https://wa.me/${c.whatsapp}`} target="_blank" rel="noopener noreferrer"
+              className="text-sm font-medium px-4 py-1.5 rounded-lg transition-colors text-white"
+              style={{ backgroundColor: COLORS.accent }}>
+              Contact
+            </a>
+          )}
+        </div>
+        <button className={`sm:hidden p-2 ${scrolled ? 'text-gray-900' : 'text-white'}`} onClick={() => setOpen(!open)} aria-label="Menu">
+          {open ? <X size={22} /> : <List size={22} />}
+        </button>
+      </Container>
+      {open && (
+        <div className="sm:hidden bg-white border-t border-gray-100 px-4 pb-4 space-y-3">
+          <a href="/" className="block text-sm text-gray-600 pt-3" onClick={() => setOpen(false)}>Home</a>
+          <a href="/#catalogue" className="block text-sm text-gray-600" onClick={() => setOpen(false)}>Products</a>
+          {c.whatsapp && (
+            <a href={`https://wa.me/${c.whatsapp}`} target="_blank" rel="noopener noreferrer"
+              className="block text-sm font-medium text-white px-4 py-2 rounded-lg text-center"
+              style={{ backgroundColor: COLORS.accent }}>
+              Contact
+            </a>
+          )}
+        </div>
+      )}
+    </nav>
+  )
+}
+
+function ImageWithFallback({ src, alt, className = '', initials }) {
+  const [errored, setErrored] = useState(false)
+  if (!src || errored) {
+    return (
+      <div className={`flex items-center justify-center bg-gray-800 ${className}`}>
+        <span className="text-2xl font-bold text-gray-600">{initials || '?'}</span>
+      </div>
+    )
+  }
+  return <img src={src} alt={alt} className={className} loading="lazy" onError={() => setErrored(true)} />
+}
+
+function HeroBanner() {
+  const firstSlide = c.slides?.[0]
+  return (
+    <section className="relative overflow-hidden">
+      <div className="pt-16" style={{ background: `linear-gradient(135deg, ${COLORS.primary} 0%, ${COLORS.primary}dd 50%, ${COLORS.accent}33 100%)` }}>
+        <Container className="py-20 sm:py-28 text-center">
+          {firstSlide?.tag && (
+            <span className="inline-block text-xs font-semibold tracking-widest uppercase mb-4 px-4 py-1.5 rounded-full bg-white/10 text-white/90 backdrop-blur-sm">
+              {firstSlide.tag}
+            </span>
+          )}
+          <h1 className="text-3xl sm:text-5xl lg:text-6xl font-bold text-white leading-tight mb-4">
+            {firstSlide?.title || c.name}
+          </h1>
+          <p className="text-base sm:text-lg text-white/70 max-w-xl mx-auto leading-relaxed mb-8">
+            {firstSlide?.description || c.tagline || c.description || 'Discover our collection'}
+          </p>
+          <div className="max-w-md mx-auto">
+            <div className="relative">
+              <MagnifyingGlass size={18} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-white/50" />
+              <input
+                id="hero-search"
+                type="text"
+                placeholder="Search products..."
+                className="w-full pl-10 pr-4 py-3 bg-white/10 border border-white/20 rounded-xl text-sm text-white placeholder-white/50 focus:outline-none focus:border-white/40 transition-colors backdrop-blur-sm"
+                onFocus={(e) => { e.target.style.borderColor = COLORS.accent }}
+                onBlur={(e) => { e.target.style.borderColor = '' }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    const q = e.target.value.trim()
+                    if (q) window.location.href = `/#catalogue?q=${encodeURIComponent(q)}`
+                  }
+                }}
+              />
+            </div>
+          </div>
+        </Container>
+      </div>
+    </section>
+  )
+}
+
+function ProductCard({ item }) {
+  const navigate = useNavigate()
+  return (
+    <article
+      className="bg-slate-800/50 border border-slate-700/50 rounded-xl overflow-hidden cursor-pointer transition-all hover:border-slate-600 hover:shadow-xl hover:shadow-black/20 hover:-translate-y-1"
+      onClick={() => navigate(`/product/${item.id}`)}
+      role="button"
+      tabIndex={0}
+      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') navigate(`/product/${item.id}`) }}
+    >
+      <div className="relative aspect-square overflow-hidden bg-slate-800">
+        <ImageWithFallback
+          src={item.image?.src}
+          alt={item.title}
+          className="w-full h-full object-cover"
+          initials={item.title?.charAt(0)}
+        />
+        {item.badge && (
+          <span className="absolute top-2 left-2 px-2.5 py-1 rounded-md text-xs font-semibold text-white"
+            style={{ backgroundColor: COLORS.accent }}>
+            {item.badge}
+          </span>
+        )}
+      </div>
+      <div className="p-4">
+        <h3 className="text-sm font-semibold text-white line-clamp-2 leading-snug">{item.title}</h3>
+        <p className="mt-1.5 text-base font-bold" style={{ color: COLORS.accent }}>
+          {c.currency} {Number(item.price).toLocaleString()}
+        </p>
+        {item.category && (
+          <span className="mt-2 inline-block text-xs text-slate-400 bg-slate-700/50 px-2 py-0.5 rounded">{item.category}</span>
+        )}
+        {item.specs && item.specs.length > 0 && (
+          <div className="mt-2 space-y-0.5">
+            {item.specs.slice(0, 2).map((spec, i) => (
+              <p key={i} className="text-xs text-slate-500 truncate">
+                {typeof spec === 'string' ? spec : `${spec.label || spec.name}: ${spec.value}`}
+              </p>
+            ))}
+          </div>
+        )}
+      </div>
+    </article>
+  )
+}
+
+function EmptyState({ searchTerm }) {
+  return (
+    <div className="text-center py-16">
+      <div className="w-16 h-16 mx-auto rounded-full bg-slate-700/50 flex items-center justify-center mb-4">
+        <MagnifyingGlass size={24} className="text-slate-500" />
+      </div>
+      <h3 className="text-lg font-semibold text-white">
+        {searchTerm ? `No products matching "${searchTerm}"` : 'No products yet'}
+      </h3>
+      <p className="mt-1 text-sm text-slate-400">
+        {searchTerm ? 'Try a different search term.' : 'Check back soon.'}
+      </p>
+    </div>
+  )
+}
+
+function CatalogueSection() {
+  const [search, setSearch] = useState('')
+  const [selectedCategory, setSelectedCategory] = useState('')
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    const q = params.get('q')
+    if (q) setSearch(q)
+  }, [])
+
+  const filtered = useMemo(() => {
+    let result = c.catalogue.filter((item) => item.available !== false)
+    if (search.trim()) {
+      const q = search.toLowerCase()
+      result = result.filter(
+        (item) =>
+          item.title.toLowerCase().includes(q) ||
+          (item.category && item.category.toLowerCase().includes(q))
+      )
+    }
+    if (selectedCategory) {
+      result = result.filter((item) => item.category === selectedCategory)
+    }
+    return result
+  }, [search, selectedCategory])
+
+  return (
+    <section id="catalogue" className="py-16 sm:py-20" style={{ backgroundColor: COLORS.primary }}>
+      <Container>
+        <div className="text-center mb-10">
+          <h2 className="text-2xl sm:text-3xl font-bold text-white">Our Products</h2>
+          <p className="mt-2 text-slate-400 max-w-xl mx-auto">{c.catalogue.length} items in stock</p>
+        </div>
+        <div className="max-w-md mx-auto mb-6">
+          <div className="relative">
+            <MagnifyingGlass size={18} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
+            <input
+              type="text"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search products..."
+              className="w-full pl-10 pr-4 py-2.5 bg-slate-800/50 border border-slate-700/50 rounded-xl text-sm text-white placeholder-slate-400 focus:outline-none focus:border-slate-500 transition-colors"
+            />
+          </div>
+        </div>
+        {c.categories.length > 0 && (
+          <div className="mb-8 flex flex-wrap gap-2 justify-center">
+            <button
+              onClick={() => setSelectedCategory('')}
+              className={`px-4 py-1.5 rounded-full text-xs font-medium transition-colors ${!selectedCategory ? 'text-white' : 'text-slate-400 bg-slate-700/50 hover:bg-slate-700'}`}
+              style={!selectedCategory ? { backgroundColor: COLORS.accent } : {}}>
+              All
+            </button>
+            {c.categories.map((cat) => (
+              <button key={cat}
+                onClick={() => setSelectedCategory(cat)}
+                className={`px-4 py-1.5 rounded-full text-xs font-medium transition-colors ${selectedCategory === cat ? 'text-white' : 'text-slate-400 bg-slate-700/50 hover:bg-slate-700'}`}
+                style={selectedCategory === cat ? { backgroundColor: COLORS.accent } : {}}>
+                {cat}
+              </button>
+            ))}
+          </div>
+        )}
+        {filtered.length > 0 ? (
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 md:gap-6">
+            {filtered.map((item) => (
+              <ProductCard key={item.id} item={item} />
+            ))}
+          </div>
+        ) : (
+          <EmptyState searchTerm={search} />
+        )}
+      </Container>
+    </section>
+  )
+}
+
+function Footer() {
+  return (
+    <footer style={{ backgroundColor: COLORS.primary }} className="border-t border-slate-700/50">
+      <Container className="py-10 sm:py-12">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-8">
+          <div>
+            <h3 className="font-semibold text-white text-sm mb-3">{c.name}</h3>
+            <p className="text-xs text-slate-400 leading-relaxed">{c.tagline || c.description || ''}</p>
+          </div>
+          <div>
+            <h3 className="font-semibold text-white text-sm mb-3">Contact</h3>
+            <div className="space-y-2 text-xs text-slate-400">
+              {c.email && <div className="flex items-center gap-2"><Envelope size={14} />{c.email}</div>}
+              {c.phone && <div className="flex items-center gap-2"><WhatsappLogo size={14} />{c.phone}</div>}
+              {c.location && <div className="flex items-center gap-2"><MapPin size={14} />{c.location}</div>}
+              {c.hours.length > 0 && <div className="flex items-center gap-2"><Clock size={14} />{c.hours[0].day} {c.hours[0].hours}</div>}
+            </div>
+          </div>
+          <div>
+            <h3 className="font-semibold text-white text-sm mb-3">Follow Us</h3>
+            <div className="flex gap-3">
+              {c.socialLinks.map((link) => (
+                <a key={link.label} href={link.href} target="_blank" rel="noopener noreferrer"
+                  className="w-8 h-8 rounded-lg bg-slate-700/50 flex items-center justify-center text-slate-400 hover:text-white transition-colors">
+                  {link.icon === 'instagram' && <InstagramLogo size={16} />}
+                  {link.icon === 'facebook' && <FacebookLogo size={16} />}
+                  {link.icon === 'tiktok' && <Globe size={16} />}
+                </a>
+              ))}
+            </div>
+          </div>
+        </div>
+        <div className="mt-8 pt-6 border-t border-slate-700/50 text-center text-xs text-slate-500">
+          &copy; {new Date().getFullYear()} {c.name}. Powered by <a href="https://keel.framestudio.co.ke" className="underline hover:text-slate-300 transition-colors" target="_blank" rel="noopener noreferrer">Keel</a>
+        </div>
+      </Container>
+    </footer>
+  )
+}
+
+function WhatsAppFloat() {
+  if (!c.whatsapp) return null
+  return (
+    <a
+      href={`https://wa.me/${c.whatsapp}`}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="whatsapp-float fixed bottom-6 right-6 z-40 w-14 h-14 rounded-full shadow-lg shadow-black/30 flex items-center justify-center text-white transition-transform hover:scale-110"
+      style={{ backgroundColor: '#25D366' }}
+      aria-label="Chat on WhatsApp"
+    >
+      <WhatsappLogo size={26} weight="fill" />
+    </a>
+  )
+}
+
+function BackToTop() {
+  const [visible, setVisible] = useState(false)
+  useEffect(() => {
+    const onScroll = () => setVisible(window.scrollY > 400)
+    window.addEventListener('scroll', onScroll, { passive: true })
+    return () => window.removeEventListener('scroll', onScroll)
+  }, [])
+  return visible ? (
+    <button
+      onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
+      className="back-to-top fixed bottom-6 left-6 z-40 w-10 h-10 rounded-full bg-slate-700 border border-slate-600 shadow-lg flex items-center justify-center text-slate-400 hover:text-white transition-colors"
+      aria-label="Back to top"
+    >
+      <CaretUp size={18} />
+    </button>
+  ) : null
+}
+
+function ProductDetail() {
+  const { id } = useParams()
+  const navigate = useNavigate()
+  const item = useMemo(() => c.catalogue.find((p) => p.id === id), [id])
+  const [currentImage, setCurrentImage] = useState(0)
+
+  if (!item) {
+    return (
+      <div className="pt-20 pb-12 text-center" style={{ backgroundColor: COLORS.primary }}>
+        <p className="text-slate-400">Product not found</p>
+        <button onClick={() => navigate('/')} className="mt-4 text-sm text-white underline">Back to home</button>
+      </div>
+    )
+  }
+
+  const images = [item.image?.src].filter(Boolean)
+
+  return (
+    <div style={{ backgroundColor: COLORS.primary, minHeight: '100vh' }}>
+      <Container className="py-8 pt-20">
+        <button onClick={() => navigate('/')} className="flex items-center gap-1 text-sm text-slate-400 hover:text-white mb-6 transition-colors">
+          <CaretLeft size={16} /> Back
+        </button>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-8 lg:gap-12">
+          <div>
+            <div className="aspect-square rounded-xl overflow-hidden bg-slate-800 mb-3">
+              <ImageWithFallback
+                src={images[currentImage]}
+                alt={item.title}
+                className="w-full h-full object-cover"
+                initials={item.title?.charAt(0)}
+              />
+            </div>
+            {images.length > 1 && (
+              <div className="flex gap-2 overflow-x-auto">
+                {images.map((img, i) => (
+                  <button key={i}
+                    onClick={() => setCurrentImage(i)}
+                    className={`w-16 h-16 rounded-lg overflow-hidden border-2 flex-shrink-0 transition-colors ${currentImage === i ? 'border-white' : 'border-transparent'}`}>
+                    <ImageWithFallback src={img} alt="" className="w-full h-full object-cover" initials=""/>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+          <div>
+            {item.badge && (
+              <span className="inline-block text-xs font-semibold text-white px-2.5 py-1 rounded mb-3"
+                style={{ backgroundColor: COLORS.accent }}>{item.badge}</span>
+            )}
+            <h1 className="text-2xl sm:text-3xl font-bold text-white mb-3">{item.title}</h1>
+            <p className="text-2xl font-bold mb-4" style={{ color: COLORS.accent }}>
+              {c.currency} {Number(item.price).toLocaleString()}
+            </p>
+            {item.description && (
+              <p className="text-sm text-slate-400 leading-relaxed mb-6">{item.description}</p>
+            )}
+            {item.specs.length > 0 && (
+              <div className="mb-6">
+                <h3 className="text-sm font-semibold text-white mb-3">Specifications</h3>
+                <div className="space-y-2">
+                  {item.specs.map((spec, i) => (
+                    <div key={i} className="flex justify-between text-sm bg-slate-800/50 rounded-lg px-3 py-2">
+                      <span className="text-slate-400">{typeof spec === 'string' ? 'Detail' : spec.label || spec.name}</span>
+                      <span className="text-white font-medium">{typeof spec === 'string' ? spec : spec.value}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+            {item.variants.length > 0 && (
+              <div className="mb-6">
+                <h3 className="text-sm font-semibold text-white mb-3">Available Options</h3>
+                <div className="flex flex-wrap gap-2">
+                  {item.variants.map((v, i) => (
+                    <span key={i} className="text-xs px-3 py-1.5 bg-slate-800/50 border border-slate-700/50 rounded-lg text-slate-300">
+                      {v.label || v.name || v}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+            {c.whatsapp && (
+              <a href={`https://wa.me/${c.whatsapp}?text=Hi%2C%20I%27m%20interested%20in%20${encodeURIComponent(item.title)}`}
+                target="_blank" rel="noopener noreferrer"
+                className="inline-flex items-center gap-2 px-6 py-3 text-white font-medium rounded-xl text-sm transition-all"
+                style={{ backgroundColor: '#25D366' }}>
+                <WhatsappLogo size={18} /> Order via WhatsApp
+              </a>
+            )}
+          </div>
+        </div>
+      </Container>
+    </div>
+  )
+}
+
+function RelatedProducts() {
+  const { id } = useParams()
+  const navigate = useNavigate()
+  const item = c.catalogue.find((p) => p.id === id)
+  if (!item) return null
+
+  const related = c.catalogue.filter((p) => p.id !== id && p.available !== false && (p.category === item.category)).slice(0, 4)
+  if (related.length === 0) return null
+
+  return (
+    <section style={{ backgroundColor: COLORS.primary }} className="border-t border-slate-700/50 py-10">
+      <Container>
+        <h2 className="text-lg font-bold text-white mb-5">You May Also Like</h2>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          {related.map((p) => (
+            <ProductCard key={p.id} item={p} />
+          ))}
+        </div>
+      </Container>
+    </section>
+  )
+}
+
+function HomePage() {
+  return (
+    <div className="min-h-screen" style={{ backgroundColor: COLORS.primary }}>
+      <Nav />
+      <HeroBanner />
+      <CatalogueSection />
+      <Footer />
+      <WhatsAppFloat />
+      <BackToTop />
+    </div>
+  )
+}
+
+export default function App() {
+  return (
+    <Routes>
+      <Route path="/" element={<HomePage />} />
+      <Route path="/product/:id" element={<><Nav /><ProductDetail /><RelatedProducts /><Footer /><WhatsAppFloat /><BackToTop /></>} />
+    </Routes>
+  )
+}

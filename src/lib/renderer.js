@@ -291,48 +291,65 @@ html {
 }`
 }
 
-export function renderTemplate(templateDir, rawData) {
+export function renderTemplate(templateDir, rawData, baseTemplateDir) {
   const config = mapToConfig(rawData)
-  const files = walkDir(templateDir)
   const output = {}
 
-  for (const { full, rel } of files) {
-    if (!rel.endsWith('.ejs')) {
-      output[rel] = readFileSync(full, 'utf-8')
-      continue
-    }
+  // Walk base template dir first (if provided), then template dir (overrides)
+  const dirs = baseTemplateDir ? [baseTemplateDir, templateDir] : [templateDir]
+  const seen = new Set()
+  for (const dir of dirs) {
+    const files = walkDir(dir)
+    for (const { full, rel } of files) {
+      const normalized = rel.replace(/\\/g, '/')
+      if (seen.has(normalized)) continue
+      seen.add(normalized)
 
-    const content = readFileSync(full, 'utf-8')
-    const rendered = ejs.render(content, config)
-    const outPath = rel.replace(/\.ejs$/, '')
-    output[outPath] = rendered
+      if (!rel.endsWith('.ejs')) {
+        output[rel] = readFileSync(full, 'utf-8')
+        continue
+      }
+
+      const content = readFileSync(full, 'utf-8')
+      const rendered = ejs.render(content, config)
+      const outPath = rel.replace(/\.ejs$/, '')
+      output[outPath] = rendered
+    }
   }
 
   return output
 }
 
-export function renderFromSections(baseTemplateDir, sectionsDir, rawData, blueprint) {
+export function renderFromSections(baseTemplateDir, sectionsDir, rawData, blueprint, sectionBaseDir) {
   const config = mapToConfig(rawData)
   const appJsxSource = composeAppJsx(sectionsDir, blueprint)
   const stylesCssSource = composeStylesCss()
 
   const output = {}
 
-  // Walk base template dir (skip any existing App.jsx.ejs or renderer.js)
-  const files = walkDir(baseTemplateDir)
-  for (const { full, rel } of files) {
-    const skipList = ['src/App.jsx.ejs', 'src/App.jsx', 'src/renderer.js', 'src/renderer.js.ejs', 'src/styles.css.ejs', 'src/styles.css']
-    if (skipList.includes(rel.replace(/\\/g, '/'))) continue
+  // Walk base + sectionBase dirs (skip App.jsx.ejs / styles.css.ejs)
+  const dirs = sectionBaseDir ? [sectionBaseDir, baseTemplateDir] : [baseTemplateDir]
+  const seen = new Set()
+  for (const dir of dirs) {
+    const files = walkDir(dir)
+    for (const { full, rel } of files) {
+      const normalized = rel.replace(/\\/g, '/')
+      if (seen.has(normalized)) continue
+      seen.add(normalized)
 
-    if (!rel.endsWith('.ejs')) {
-      output[rel] = readFileSync(full, 'utf-8')
-      continue
+      const skipList = ['src/App.jsx.ejs', 'src/App.jsx', 'src/renderer.js', 'src/renderer.js.ejs', 'src/styles.css.ejs', 'src/styles.css']
+      if (skipList.includes(normalized)) continue
+
+      if (!rel.endsWith('.ejs')) {
+        output[rel] = readFileSync(full, 'utf-8')
+        continue
+      }
+
+      const content = readFileSync(full, 'utf-8')
+      const rendered = ejs.render(content, config)
+      const outPath = rel.replace(/\.ejs$/, '')
+      output[outPath] = rendered
     }
-
-    const content = readFileSync(full, 'utf-8')
-    const rendered = ejs.render(content, config)
-    const outPath = rel.replace(/\.ejs$/, '')
-    output[outPath] = rendered
   }
 
   // Override with generated files (App.jsx is plain JSX, not EJS)

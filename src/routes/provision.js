@@ -57,13 +57,20 @@ provisionRoutes.post('/', async (c) => {
       return c.json({ error: `Template directory not found: ${baseTemplateId}` }, 500)
     }
 
+    // Resolve base template dir for shared boilerplate inheritance
+    let baseDir = null
+    if (template.base) {
+      const basePath = join(TEMPLATES_DIR, template.base)
+      if (existsSync(basePath)) baseDir = basePath
+    }
+
     let renderedFiles
     if (sections && sections.length > 0) {
       const sectionsDir = process.env.SECTIONS_DIR || join(TEMPLATES_DIR, '..', '..', 'storefront-sections', 'sections')
       const blueprint = buildBlueprint(sections)
-      renderedFiles = renderFromSections(templateDir, sectionsDir, rawData, blueprint)
+      renderedFiles = renderFromSections(templateDir, sectionsDir, rawData, blueprint, baseDir)
     } else {
-      renderedFiles = renderTemplate(templateDir, rawData)
+      renderedFiles = renderTemplate(templateDir, rawData, baseDir)
     }
 
     const vercelFiles = Object.entries(renderedFiles).map(([path, data]) => ({

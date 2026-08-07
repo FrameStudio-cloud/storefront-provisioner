@@ -9,8 +9,6 @@ services:
     startCommand: npm start
     healthCheckPath: /
     envVars:
-      - key: PORT
-        value: 3002
       - key: SUPABASE_URL
         sync: false
       - key: SUPABASE_SERVICE_ROLE_KEY

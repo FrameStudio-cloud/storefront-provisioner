@@ -1,25 +1,44 @@
 import { Hono } from 'hono'
+import { randomUUID } from 'crypto'
 import { supabase } from '../db.js'
-import { fetchShopData } from '../lib/shop-fetcher.js'
-import { renderTemplate, renderFromSections } from '../lib/renderer.js'
-import { createProject, createDeployment, assignDomain, deleteProject } from '../vercel.js'
-import { formatDomain, validateSubdomain } from '../lib/domain.js'
+import { validateSubdomain } from '../lib/domain.js'
 import { getTemplate } from '../templates/registry.js'
-import { join } from 'path'
-import { fileURLToPath } from 'url'
-import { existsSync } from 'fs'
-
-const __dirname = join(fileURLToPath(import.meta.url), '..')
-const TEMPLATES_DIR = join(__dirname, '..', 'templates')
+import { requireShop } from '../lib/auth.js'
+import { rateLimit } from '../lib/rate-limit.js'
+import { deploySchema } from '../lib/schema.js'
+import { createJob, addEvent, getActiveJob } from '../lib/deploy.js'
+import { sendDeployJob } from '../lib/jobs.js'
 
 export const provisionRoutes = new Hono()
 
+provisionRoutes.use(requireShop())
+provisionRoutes.use(rateLimit({
+  keyFn: (c) => `deploy:${c.get('shopId')}`,
+  windowMs: parseInt(process.env.DEPLOY_RATE_LIMIT_WINDOW_MS || '3600000', 10),
+  limit: parseInt(process.env.DEPLOY_RATE_LIMIT || '3', 10),
+  errorMessage: 'Deploy rate limit exceeded. Try again later.',
+}))
+
+// Enqueue a storefront deployment. Heavy lifting (render, Vercel, domain) is done
+// asynchronously by the deploy worker so HTTP requests stay fast and retryable.
 provisionRoutes.post('/', async (c) => {
   try {
-    const { shop_id, template_id, subdomain, sections } = await c.req.json()
+    let body
+    try {
+      body = await c.req.json()
+    } catch {
+      return c.json({ error: 'Invalid JSON body' }, 400)
+    }
 
-    if (!shop_id) return c.json({ error: 'shop_id is required' }, 400)
-    if (!subdomain) return c.json({ error: 'subdomain is required' }, 400)
+    const parsed = deploySchema.safeParse(body)
+    if (!parsed.success) {
+      return c.json({ error: 'Invalid request payload', details: parsed.error.flatten() }, 400)
+    }
+    const { shop_id, template_id, subdomain, sections, config } = parsed.data
+
+    if (shop_id !== c.get('shopId')) {
+      return c.json({ error: 'shop_id does not match the authenticated account' }, 403)
+    }
 
     const domainError = validateSubdomain(subdomain)
     if (domainError) return c.json({ error: domainError }, 400)
@@ -27,6 +46,7 @@ provisionRoutes.post('/', async (c) => {
     const template = getTemplate(template_id || 'classic')
     if (!template) return c.json({ error: 'Invalid template_id' }, 400)
 
+    // Fail-fast checks that don't require hitting Vercel
     const existing = await supabase
       .from('storefront_deployments')
       .select('*')
@@ -48,135 +68,38 @@ provisionRoutes.post('/', async (c) => {
       return c.json({ error: 'Subdomain already taken' }, 409)
     }
 
-    const rawData = await fetchShopData(shop_id)
-
-    // For custom/section-based templates, use the classic template dir as base
-    const baseTemplateId = (sections && sections.length > 0) ? 'classic' : template.id
-    const templateDir = join(TEMPLATES_DIR, baseTemplateId)
-    if (!existsSync(templateDir)) {
-      return c.json({ error: `Template directory not found: ${baseTemplateId}` }, 500)
+    // Idempotency: if this shop already has an in-flight job, reuse it instead
+    // of starting a second concurrent deploy.
+    const active = await getActiveJob(shop_id)
+    if (active) {
+      return c.json({
+        job_id: active.id,
+        trace_id: active.trace_id,
+        status: active.status,
+        in_progress: true,
+      }, 409)
     }
 
-    // Resolve base template dir for shared boilerplate inheritance
-    let baseDir = null
-    if (template.base) {
-      const basePath = join(TEMPLATES_DIR, template.base)
-      if (existsSync(basePath)) baseDir = basePath
-    }
-
-    let renderedFiles
-    if (sections && sections.length > 0) {
-      const sectionsDir = process.env.SECTIONS_DIR || join(TEMPLATES_DIR, '..', '..', 'storefront-sections', 'sections')
-      const blueprint = buildBlueprint(sections)
-      renderedFiles = renderFromSections(templateDir, sectionsDir, rawData, blueprint, baseDir)
-    } else {
-      renderedFiles = renderTemplate(templateDir, rawData, baseDir)
-    }
-
-    const vercelFiles = Object.entries(renderedFiles).map(([path, data]) => ({
-      file: path.replace(/\\/g, '/'),
-      data: Buffer.from(data).toString('base64'),
-      encoding: 'base64',
-    }))
-
-    const domain = formatDomain(subdomain)
-
-    if (!process.env.SUPABASE_ANON_KEY) {
-      throw new Error('SUPABASE_ANON_KEY is required — refusing to deploy with service role key in client bundle')
-    }
-    const envVars = {
-      VITE_SUPABASE_URL: process.env.SUPABASE_URL,
-      VITE_SUPABASE_ANON_KEY: process.env.SUPABASE_ANON_KEY,
-      VITE_SHOP_SLUG: rawData.shop.slug,
-    }
-
-    let deployment
-    let projectId
-
-    if (existing.data) {
-      projectId = existing.data.vercel_project_id
-      deployment = await createDeployment(subdomain.toLowerCase(), projectId, vercelFiles, envVars)
-    } else {
-      const projectName = `storefront-${subdomain.toLowerCase()}`
-      const project = await createProject(projectName)
-      projectId = project.id
-      try {
-        deployment = await createDeployment(projectName, projectId, vercelFiles, envVars)
-      } catch (err) {
-        console.error('Deployment failed, cleaning up project:', projectId)
-        try { await deleteProject(projectId) } catch (_) {}
-        throw err
-      }
-    }
-
-    let domainResult = null
-    try {
-      domainResult = await assignDomain(projectId, domain)
-    } catch (err) {
-      console.warn('Domain assignment failed (will be retried):', err.message)
-    }
-
-    console.log(`Deployment response:`, JSON.stringify(deployment))
-
-    if (existing.data) {
-      const { error: updateError } = await supabase
-        .from('storefront_deployments')
-        .update({
-          template_id: template.id,
-          url: `https://${deployment.url}`,
-          domain: domainResult?.domain || domain,
-          status: 'deployed',
-        })
-        .eq('shop_id', shop_id)
-
-      if (updateError) {
-        console.error('Failed to update deployment record:', updateError.message)
-      }
-    } else {
-      const { error: insertError } = await supabase.from('storefront_deployments').insert({
-        shop_id: rawData.shop.id,
-        template_id: template.id,
-        subdomain: subdomain.toLowerCase(),
-        vercel_project_id: projectId,
-        url: `https://${deployment.url}`,
-        domain: domainResult?.domain || domain,
-        status: 'deployed',
-      })
-
-      if (insertError) {
-        console.error('Failed to save deployment record:', insertError.message)
-      }
-    }
+    const traceId = randomUUID()
+    const job = await createJob({
+      shop_id,
+      template_id: template.id,
+      subdomain: subdomain.toLowerCase(),
+      sections,
+      config,
+      trace_id: traceId,
+    })
+    await addEvent({ job_id: job.id, shop_id, event: 'render', status: 'queued' })
+    await sendDeployJob({ job_id: job.id })
 
     return c.json({
-      success: true,
-      url: `https://${deployment.url}`,
-      domain: domainResult?.domain || domain,
-      project_id: projectId,
-    }, existing.data ? 200 : 201)
-
+      job_id: job.id,
+      trace_id: traceId,
+      status: 'queued',
+      queued: true,
+    }, 202)
   } catch (err) {
-    console.error('Provision error:', err)
+    console.error('Provision enqueue error:', err)
     return c.json({ error: err.message }, 500)
   }
 })
-
-// Build a blueprint from an array of section IDs.
-// Sections on both pages: navbar/*, footer/*, announcements, whatsapp-float, back-to-top
-// Product-only: catalogue/product-detail, catalogue/related
-// Everything else goes on home page only
-function buildBlueprint(sectionIds) {
-  const productOnly = ['catalogue/product-detail', 'catalogue/related']
-  const bothPages = ['announcements', 'whatsapp-float', 'back-to-top']
-
-  const home = sectionIds.filter(id => !productOnly.includes(id))
-
-  const product = sectionIds.filter(id =>
-    productOnly.includes(id) ||
-    bothPages.includes(id) ||
-    id.startsWith('navbar/') ||
-    id.startsWith('footer/')
-  )
-
-  return { home, product }
-}

@@ -1,0 +1,35 @@
+services:
+  - type: web
+    name: storefront-provisioner
+    runtime: node
+    plan: free
+    repo: https://github.com/FrameStudio-cloud/storefront-provisioner
+    branch: main
+    buildCommand: git clone --depth 1 https://github.com/FrameStudio-cloud/storefront-sections.git storefront-sections && npm install
+    startCommand: npm start
+    healthCheckPath: /
+    envVars:
+      - key: PORT
+        value: 3002
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      - key: SUPABASE_JWT_SECRET
+        sync: false
+      - key: VERCEL_TOKEN
+        sync: false
+      - key: DATABASE_URL
+        sync: false
+      - key: ALLOWED_ORIGINS
+        sync: false
+      - key: VERCEL_WEBHOOK_URL
+        sync: false
+      - key: VERCEL_WEBHOOK_SECRET
+        sync: false
+      - key: DEPLOY_RATE_LIMIT
+        value: 3
+      - key: DEPLOY_RATE_LIMIT_WINDOW_MS
+        value: "3600000"
+      - key: MAX_DEPLOY_ATTEMPTS
+        value: "3"

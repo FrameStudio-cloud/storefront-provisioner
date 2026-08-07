@@ -126,7 +126,7 @@ function normalizePhone(phone) {
   return normalized
 }
 
-function mapToConfig(raw) {
+function mapToConfig(raw, configOverride) {
   const { shop, settings, catalogue, banners } = raw
   const name = settings.store_name || shop.name || ''
   const nameParts = name.split(/[\s/]/).filter(Boolean)
@@ -175,9 +175,9 @@ function mapToConfig(raw) {
     currency: settings.currency_symbol || 'KSh',
     websiteUrl: settings.website_url || '',
     hours,
-    primaryColor: settings.primary_color || '#000000',
-    secondaryColor: settings.secondary_color || '#4f46e5',
-    accentColor: settings.accent_color || '#f59e0b',
+    primaryColor: configOverride?.theme?.primary_color || settings.primary_color || '#000000',
+    secondaryColor: configOverride?.theme?.secondary_color || settings.secondary_color || '#4f46e5',
+    accentColor: configOverride?.theme?.accent_color || settings.accent_color || '#f59e0b',
     slides,
     categories: [...new Set((catalogue || []).map((item) => item.category).filter(Boolean))],
     catalogue: (catalogue || []).map((item) => ({
@@ -291,12 +291,12 @@ html {
 }`
 }
 
-export function renderTemplate(templateDir, rawData, baseTemplateDir) {
-  const config = mapToConfig(rawData)
+export function renderTemplate(templateDir, rawData, baseTemplateDir, configOverride) {
+  const config = mapToConfig(rawData, configOverride)
   const output = {}
 
-  // Walk base template dir first (if provided), then template dir (overrides)
-  const dirs = baseTemplateDir ? [baseTemplateDir, templateDir] : [templateDir]
+  // Walk template dir first (higher priority, overrides base), then shared base fills gaps
+  const dirs = baseTemplateDir ? [templateDir, baseTemplateDir] : [templateDir]
   const seen = new Set()
   for (const dir of dirs) {
     const files = walkDir(dir)
@@ -320,8 +320,8 @@ export function renderTemplate(templateDir, rawData, baseTemplateDir) {
   return output
 }
 
-export function renderFromSections(baseTemplateDir, sectionsDir, rawData, blueprint, sectionBaseDir) {
-  const config = mapToConfig(rawData)
+export function renderFromSections(baseTemplateDir, sectionsDir, rawData, blueprint, sectionBaseDir, configOverride) {
+  const config = mapToConfig(rawData, configOverride)
   const appJsxSource = composeAppJsx(sectionsDir, blueprint)
   const stylesCssSource = composeStylesCss()
 

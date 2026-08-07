@@ -1,11 +1,15 @@
 import { Hono } from 'hono'
 import { supabase } from '../db.js'
 import { deleteProject } from '../vercel.js'
+import { requireShop } from '../lib/auth.js'
 
 export const deleteRoutes = new Hono()
 
+deleteRoutes.use(requireShop())
+
 deleteRoutes.delete('/:shopId', async (c) => {
   const shopId = c.req.param('shopId')
+  if (shopId !== c.get('shopId')) return c.json({ error: 'Forbidden' }, 403)
 
   const { data, error } = await supabase
     .from('storefront_deployments')

@@ -134,3 +134,30 @@ export async function deleteProject(projectId) {
   await vercelFetch(`/v9/projects/${projectId}`, { method: 'DELETE' })
   return { deleted: true }
 }
+
+// Register a project webhook so Vercel can push deployment lifecycle events back
+// to us. Non-fatal: if unconfigured or it fails, the worker's polling fallback
+// still completes the job.
+export async function registerProjectWebhook(projectId) {
+  const url = process.env.VERCEL_WEBHOOK_URL
+  const secret = process.env.VERCEL_WEBHOOK_SECRET
+  if (!url || !secret) {
+    console.warn('VERCEL_WEBHOOK_URL/SECRET not set — skipping project webhook registration')
+    return null
+  }
+  try {
+    const body = await vercelFetch(`/v1/projects/${projectId}/webhooks`, {
+      method: 'POST',
+      body: JSON.stringify({
+        events: ['deployment.created', 'deployment.ready', 'deployment.error', 'deployment.canceled'],
+        url,
+        secret,
+      }),
+    })
+    console.log(`Registered project webhook for ${projectId}`)
+    return body
+  } catch (err) {
+    console.warn('Failed to register project webhook (continuing):', err.message)
+    return null
+  }
+}

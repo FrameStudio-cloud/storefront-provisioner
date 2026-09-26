@@ -127,7 +127,57 @@ export async function assignDomain(projectId, domain) {
     method: 'POST',
     body: JSON.stringify({ name: domain }),
   })
-  return { domain: body.name, verified: body.verified }
+  return { domain: body.name, verified: !!body.verified }
+}
+
+// Read the current state of a domain on a project. Returns { found: false } when
+// Vercel does not know about it, rather than throwing — callers need to tell
+// "already assigned to this project" (benign on redeploy) apart from "refused"
+// (a real failure), and only the latter should be surfaced.
+export async function getDomain(projectId, domain) {
+  try {
+    const body = await vercelFetch(
+      `/v9/projects/${projectId}/domains/${encodeURIComponent(domain)}`
+    )
+    return {
+      found: true,
+      domain: body.name,
+      verified: !!body.verified,
+      verification: body.verification || [],
+    }
+  } catch (err) {
+    if (/Vercel API error 404/.test(err.message)) return { found: false, verified: false }
+    throw err
+  }
+}
+
+// Vercel issues the TLS cert asynchronously, so `verified` is usually false on the
+// response to the assign call even when it will succeed moments later. Poll until
+// it flips. Runs inside the long-lived deploy worker (not a request), so blocking
+// here is safe — waitForDeployment already blocks for up to 120s.
+export async function waitForDomainVerification(projectId, domain, options = {}) {
+  const timeoutMs = options.timeoutMs ?? 90_000
+  const intervalMs = options.intervalMs ?? 3_000
+  const start = Date.now()
+  let last = { found: false, verified: false }
+
+  while (Date.now() - start < timeoutMs) {
+    last = await getDomain(projectId, domain)
+    if (last.verified) return { ...last, timedOut: false }
+    // Assigned but Vercel will never verify it (e.g. DNS does not cover this
+    // name). Each check re-reads verification records, so bail early rather than
+    // burning the full timeout.
+    const reason = (last.verification || []).map((v) => v.reason).filter(Boolean)
+    if (reason.length > 0 && reason.every((r) => r === 'unconfigured' || r === 'mismatch')) {
+      // keep polling: Vercel can still resolve this once DNS propagates
+      if (Date.now() - start > intervalMs * 2) {
+        return { ...last, timedOut: true, reasons: reason }
+      }
+    }
+    await sleep(intervalMs)
+  }
+
+  return { ...last, timedOut: true }
 }
 
 export async function deleteProject(projectId) {

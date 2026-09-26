@@ -1,8 +1,9 @@
 import { supabase } from '../db.js'
 import { fetchShopData } from './shop-fetcher.js'
 import { renderTemplate, renderFromSections } from './renderer.js'
-import { createProject, createDeployment, assignDomain, deleteProject, registerProjectWebhook } from '../vercel.js'
+import { createProject, createDeployment, assignDomain, getDomain, waitForDomainVerification, deleteProject, registerProjectWebhook } from '../vercel.js'
 import { formatDomain } from './domain.js'
+import { isManagedWebsiteUrl, DEFAULT_PLATFORM_DOMAIN } from './website-url.js'
 import { getTemplate, getTemplateDir } from '../templates/registry.js'
 import { join } from 'path'
 import { fileURLToPath } from 'url'
@@ -10,6 +11,65 @@ import { existsSync } from 'fs'
 
 const __dirname = join(fileURLToPath(import.meta.url), '..')
 const TEMPLATES_DIR = join(__dirname, '..', 'templates')
+
+// How long to wait for Vercel to issue the TLS cert before giving up on verifying
+// and leaving the row 'pending'. Runs in the long-lived worker, not a request.
+const DOMAIN_VERIFY_TIMEOUT_MS = parseInt(
+  process.env.DOMAIN_VERIFY_TIMEOUT_MS || '90000',
+  10
+)
+
+// The provisioner owns store_settings.website_url from here on: it is the only
+// component that knows the verified storefront address, and asking the owner to
+// copy it into a settings box by hand was the actual manual step in the flow —
+// and an easy one to get wrong (one shop had website_url pointing at a completely
+// different storefront).
+//
+// Overwrite only values we could have written ourselves (empty, a Vercel fallback
+// host, or an address under our own platform root). Anything else is presumed to
+// be a domain the shop owner set deliberately, and is left alone.
+const PLATFORM_DOMAIN_SUFFIX = process.env.PLATFORM_DOMAIN || DEFAULT_PLATFORM_DOMAIN
+
+async function syncWebsiteUrl(shopId, url, trace) {
+  try {
+    const { data: current, error: readError } = await supabase
+      .from('store_settings')
+      .select('website_url')
+      .eq('shop_id', shopId)
+      .maybeSingle()
+
+    if (readError) {
+      console.warn(`[${trace}] Could not read website_url before sync:`, readError.message)
+      return false
+    }
+
+    if (!isManagedWebsiteUrl(current?.website_url)) {
+      console.log(
+        `[${trace}] website_url is "${current.website_url}" (not ours) — leaving it untouched`
+      )
+      return false
+    }
+
+    if (current?.website_url === url) return true
+
+    const { error } = await supabase
+      .from('store_settings')
+      .update({ website_url: url })
+      .eq('shop_id', shopId)
+
+    if (error) {
+      console.warn(`[${trace}] Failed to write website_url:`, error.message)
+      return false
+    }
+
+    console.log(`[${trace}] website_url synced to ${url}`)
+    return true
+  } catch (err) {
+    // Never fail a deploy because of a convenience sync.
+    console.warn(`[${trace}] syncWebsiteUrl error:`, err.message)
+    return false
+  }
+}
 
 // Build a blueprint from an array of section IDs.
 // Sections on both pages: navbar/*, footer/*, announcements, whatsapp-float, back-to-top
@@ -141,10 +201,63 @@ export async function runDeployJob(job) {
     await event('domain', 'current')
 
     let domainResult = null
+    let domainStatus = 'failed'
+    let domainError = null
+    let domainVerified = false
+
+    // The old code caught every assignDomain failure, logged a warning, and then
+    // wrote `domainResult?.domain || domain` to the row — so a refused or
+    // unassigned domain was recorded exactly like a working one, and the UI
+    // linked to it. Vercel also rejects re-assigning a domain that is already on
+    // this project, which is the NORMAL path on redeploy, so a blanket "warn and
+    // carry on" is what hid the real failures. Separate the two cases.
     try {
-      domainResult = await assignDomain(projectId, domain)
+      await assignDomain(projectId, domain)
+      domainStatus = 'pending'
     } catch (err) {
-      console.warn(`[${trace_id || jobId}] Domain assignment failed (will be retried):`, err.message)
+      const already = await getDomain(projectId, domain).catch(() => null)
+      if (already?.found) {
+        console.log(`[${trace_id || jobId}] Domain already assigned to this project (redeploy): ${domain}`)
+        domainStatus = 'pending'
+      } else {
+        domainError = err.message
+        console.warn(`[${trace_id || jobId}] Domain assignment failed:`, err.message)
+      }
+    }
+
+    if (domainStatus === 'pending') {
+      const check = await waitForDomainVerification(projectId, domain, {
+        timeoutMs: DOMAIN_VERIFY_TIMEOUT_MS,
+      })
+      domainResult = { domain: check.domain || domain, verified: check.verified }
+      if (check.verified) {
+        domainStatus = 'verified'
+        domainVerified = true
+      } else {
+        // Assigned but the cert has not landed yet. This is not a failure — DNS
+        // may still be propagating. Leave it pending so a later status read can
+        // re-check, and keep the row honest about the fact it is not live yet.
+        domainStatus = 'pending'
+        console.warn(
+          `[${trace_id || jobId}] Domain ${domain} assigned but not verified after ` +
+          `${Math.round(DOMAIN_VERIFY_TIMEOUT_MS / 1000)}s — TLS still issuing`
+        )
+      }
+    }
+
+    const domainFields = {
+      domain: domainResult?.domain || domain,
+      domain_status: domainStatus,
+      domain_verified: domainVerified,
+      domain_error: domainError,
+      domain_checked_at: new Date().toISOString(),
+    }
+
+    // Only publish a verified address. A pending or failed domain must never
+    // become the shop's website_url, or the owner gets a dead link from a
+    // successful-looking deploy.
+    if (domainVerified) {
+      await syncWebsiteUrl(shopId, `https://${domainFields.domain}/`, trace_id || jobId)
     }
 
     if (existing.data) {
@@ -153,7 +266,7 @@ export async function runDeployJob(job) {
         .update({
           template_id: template.id,
           url: `https://${deployment.url}`,
-          domain: domainResult?.domain || domain,
+          ...domainFields,
           status: 'deployed',
         })
         .eq('shop_id', shopId)
@@ -165,21 +278,21 @@ export async function runDeployJob(job) {
         subdomain: subdomain.toLowerCase(),
         vercel_project_id: projectId,
         url: `https://${deployment.url}`,
-        domain: domainResult?.domain || domain,
+        ...domainFields,
         status: 'deployed',
       })
       if (insertError) console.error(`[${trace_id || jobId}] Failed to save deployment record:`, insertError.message)
     }
 
-    await event('domain', 'done')
-    await event('done', 'done', { url: `https://${deployment.url}`, domain: domainResult?.domain || domain })
+    await event('domain', 'done', { domain: domainFields.domain, status: domainStatus })
+    await event('done', 'done', { url: `https://${deployment.url}`, domain: domainFields.domain })
     await update({
       status: 'deployed',
       completed_at: new Date().toISOString(),
       error: null,
     })
 
-    return { url: `https://${deployment.url}`, domain: domainResult?.domain || domain }
+    return { url: `https://${deployment.url}`, domain: domainFields.domain, domainStatus }
   } catch (err) {
     console.error(`[${trace_id || jobId}] Deploy job failed:`, err)
     await event('error', 'error', { message: err.message })

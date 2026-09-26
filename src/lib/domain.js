@@ -12,9 +12,30 @@ const RESERVED_SUBDOMAINS = new Set([
   'webhooks', 'callback', 'redirect', 'proxy', 'gateway', 'redirect',
 ])
 
-export function formatDomain(subdomain) {
-  const clean = subdomain.toLowerCase().replace(/[^a-z0-9-]/g, '-').replace(/^-+|-+$/g, '')
-  return `${clean}.keel.framestudio.co.ke`
+// Fallback root. platform_domains in the database is the source of truth (one row
+// per domain FrameStudio owns, with exactly one active default); this literal only
+// applies if the table cannot be read, so a database hiccup degrades to the
+// long-standing domain instead of failing every deploy. Keep in step with
+// DEFAULT_PLATFORM_DOMAIN in website-url.js and PLATFORM_ROOT_DOMAIN in the Keel app.
+export const FALLBACK_ROOT_DOMAIN = 'keel.framestudio.co.ke'
+
+// Build the FQDN for a storefront label. The root is a parameter so owning more
+// domains is a database insert, not a code change — *.keel.framestudio.co.ke is
+// CNAMEd to cname.vercel-dns.com, and a new root needs one more CNAME record.
+export function formatDomain(subdomain, root = FALLBACK_ROOT_DOMAIN) {
+  const clean = String(subdomain || '')
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9-]/g, '-')
+    .replace(/^-+|-+$/g, '')
+  // trim() before the dot strip, or " .example.com. " keeps its spaces and
+  // becomes "shop. .example.com. "
+  const base = String(root || '')
+    .toLowerCase()
+    .trim()
+    .replace(/^\.+|\.+$/g, '')
+  if (!clean || !base) return null
+  return `${clean}.${base}`
 }
 
 export function validateSubdomain(subdomain) {

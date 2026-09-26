@@ -3,6 +3,7 @@ import { fetchShopData } from './shop-fetcher.js'
 import { renderTemplate, renderFromSections } from './renderer.js'
 import { createProject, createDeployment, assignDomain, getDomain, waitForDomainVerification, deleteProject, registerProjectWebhook } from '../vercel.js'
 import { formatDomain } from './domain.js'
+import { resolveRootDomain } from './platform-domains.js'
 import { isManagedWebsiteUrl, DEFAULT_PLATFORM_DOMAIN } from './website-url.js'
 import { getTemplate, getTemplateDir } from '../templates/registry.js'
 import { join } from 'path'
@@ -106,6 +107,15 @@ export async function runDeployJob(job) {
 
     const rawData = await fetchShopData(shopId)
 
+    // Resolve the root domain and the exact FQDN BEFORE rendering. The templates
+    // need both for canonical/og:url and JSON-LD, and they used to guess the host
+    // by slugifying the shop name with the platform root baked in — which also
+    // produced "https://https://..." because store_settings.website_url already
+    // carries a scheme.
+    const rootDomain = await resolveRootDomain({ root: config?.root_domain })
+    const domain = formatDomain(subdomain, rootDomain)
+    if (!domain) throw new Error(`Invalid subdomain: ${subdomain}`)
+
     // For custom/section-based templates, use the classic template dir as base
     const baseTemplateId = (sections && sections.length > 0) ? 'classic' : template.id
 
@@ -123,6 +133,8 @@ export async function runDeployJob(job) {
       if (existsSync(basePath)) baseDir = basePath
     }
 
+    const renderVars = { ...(config || {}), rootDomain, domain }
+
     let renderedFiles
     if (sections && sections.length > 0) {
       const sectionsCwd = join(process.cwd(), 'storefront-sections', 'sections')
@@ -130,9 +142,9 @@ export async function runDeployJob(job) {
       const sectionsDir = process.env.SECTIONS_DIR
         || (existsSync(sectionsCwd) ? sectionsCwd : sectionsLegacy)
       const blueprint = buildBlueprint(sections)
-      renderedFiles = renderFromSections(templateDir, sectionsDir, rawData, blueprint, baseDir, config)
+      renderedFiles = renderFromSections(templateDir, sectionsDir, rawData, blueprint, baseDir, renderVars)
     } else {
-      renderedFiles = renderTemplate(templateDir, rawData, baseDir, config)
+      renderedFiles = renderTemplate(templateDir, rawData, baseDir, renderVars)
     }
 
     const vercelFiles = Object.entries(renderedFiles).map(([path, data]) => ({
@@ -140,8 +152,6 @@ export async function runDeployJob(job) {
       data: Buffer.from(data).toString('base64'),
       encoding: 'base64',
     }))
-
-    const domain = formatDomain(subdomain)
 
     if (!process.env.SUPABASE_ANON_KEY) {
       throw new Error('SUPABASE_ANON_KEY is required — refusing to deploy with service role key in client bundle')
@@ -166,13 +176,18 @@ export async function runDeployJob(job) {
       throw new Error('Shop already has a storefront with a different subdomain. Delete it first.')
     }
 
+    // Availability is a property of the FQDN, not the label: with two root
+    // domains "acme" is free on both. Matches storefront_deployments_domain_uniq
+    // and is_subdomain_taken — if these three disagree the owner is told a
+    // subdomain is free and the insert then dies on the unique index.
     const taken = await supabase
       .from('storefront_deployments')
       .select('id')
-      .eq('subdomain', subdomain.toLowerCase())
+      .eq('domain', domain)
       .neq('shop_id', shopId)
+      .limit(1)
       .maybeSingle()
-    if (taken.data) throw new Error('Subdomain already taken')
+    if (taken.data) throw new Error(`"${domain}" is already taken`)
 
     let deployment
     let projectId

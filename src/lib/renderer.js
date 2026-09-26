@@ -126,11 +126,51 @@ function normalizePhone(phone) {
   return normalized
 }
 
+// Reduce whatever the shop has stored to a bare host, so templates can build an
+// absolute URL without worrying about a scheme or a trailing slash.
+export function hostOf(value) {
+  const raw = String(value || '').trim()
+  if (!raw) return ''
+  try {
+    return new URL(raw.includes('://') ? raw : `https://${raw}`).hostname.toLowerCase()
+  } catch {
+    return ''
+  }
+}
+
+// The address this storefront is actually served on, in preference order:
+// the FQDN the deploy job just claimed, then the shop's stored website_url, then
+// a slug of the shop name under the platform root.
+//
+// The templates used to do this themselves as
+// `websiteUrl || name.toLowerCase()... + '.keel.framestudio.co.ke'` and prefix it
+// with "https://" — but website_url is stored WITH a scheme, so that produced
+// canonical and og:url values of "https://https://shop.example/".
+export function resolveSiteHost({ domain, rootDomain, websiteUrl, name }) {
+  const explicit = hostOf(domain)
+  if (explicit) return explicit
+  const stored = hostOf(websiteUrl)
+  if (stored) return stored
+  const root = String(rootDomain || '').toLowerCase().replace(/^\.+|\.+$/g, '')
+  const slug = String(name || '').toLowerCase().trim().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '')
+  if (slug && root) return `${slug}.${root}`
+  return ''
+}
+
 function mapToConfig(raw, configOverride) {
   const { shop, settings, catalogue, banners } = raw
   const name = settings.store_name || shop.name || ''
   const nameParts = name.split(/[\s/]/).filter(Boolean)
   const nameAccent = settings.name_accent || (nameParts.length > 1 ? nameParts.pop() : '')
+
+  // The address this storefront is served on, decided once and reused for
+  // siteHost, siteUrl and anything a template needs.
+  const siteHost = resolveSiteHost({
+    domain: configOverride?.domain,
+    rootDomain: configOverride?.rootDomain,
+    websiteUrl: settings.website_url,
+    name,
+  })
 
   const slides = (banners || [])
     .filter((b) => b.type === 'hero' && b.active !== false)
@@ -174,6 +214,10 @@ function mapToConfig(raw, configOverride) {
     address: settings.store_address || '',
     currency: settings.currency_symbol || 'KSh',
     websiteUrl: settings.website_url || '',
+    rootDomain: String(configOverride?.rootDomain || '').toLowerCase().replace(/^\.+|\.+$/g, ''),
+    siteHost,
+    // Absolute, no double scheme. Templates use this verbatim.
+    siteUrl: siteHost ? `https://${siteHost}` : '',
     hours,
     primaryColor: configOverride?.theme?.primary_color || settings.primary_color || '#000000',
     secondaryColor: configOverride?.theme?.secondary_color || settings.secondary_color || '#4f46e5',

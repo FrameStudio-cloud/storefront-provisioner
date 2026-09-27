@@ -9,16 +9,19 @@ const themeSchema = z.object({
   logo_url: z.string().max(500).optional(),
 })
 
+// `config` used to carry ui_library, components, toolchain and theme_capabilities.
+// All four described the old per-template toolchain world - which UI library the
+// design was written against, which component names it used, whether it could take
+// a brand colour. None of it is read any more: a template is a section list and a
+// theme name, the section registry owns the component names, and every design takes
+// a brand colour. They were validated but never consumed, which is worse than
+// absent - the schema implied they meant something.
+//
+// They stay tolerated rather than rejected, since the deployed dashboard still
+// sends them and unknown keys are stripped anyway. `config` now means exactly one
+// thing: theme overrides.
 const configSchema = z.object({
-  ui_library: z.string().max(64).optional(),
-  components: z.record(z.string(), z.string()).optional(),
-  toolchain: z.object({
-    ui: z.string().max(64).optional(),
-    icons: z.string().max(64).optional(),
-    fonts: z.array(z.string().max(64)).max(12).optional(),
-  }).optional(),
   theme: themeSchema.optional(),
-  theme_capabilities: z.record(z.string(), z.boolean()).optional(),
 })
 
 // The dashboard sends a known, fixed payload shape. Unknown keys are stripped

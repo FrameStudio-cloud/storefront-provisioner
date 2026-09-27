@@ -16,6 +16,30 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+      - name: Fetch the sections repo
+        # Same clone, same destination as render.yaml, because that is where
+        # src/lib/deploy.js looks at runtime (process.cwd()/storefront-sections).
+        # The verification scripts default to the monorepo sibling path instead,
+        # so SECTIONS_DIR is pointed here rather than moving the scripts - the
+        # runtime path is the one that has to stay put.
+        run: git clone --depth 1 https://github.com/FrameStudio-cloud/storefront-sections.git storefront-sections
+      - name: Unit tests
+        # Runs without secrets on purpose: the suite is built to degrade (the
+        # schema probe reports false/false when the database is unreachable, the
+        # /build route reports the fingerprint and no keys). A CI run that needs
+        # production credentials is a CI run that stops being run.
+        run: npm test
+        env:
+          PORT: 3002
+          SECTIONS_DIR: ${{ github.workspace }}/storefront-sections/sections
+      - name: Sections build coherence
+        # Every catalogued design must render from the shared scaffold, and every
+        # section it names must resolve to a real module. This is the check that
+        # catches a template referencing a section that does not exist - which is
+        # the failure mode of templates-as-data, and it is silent otherwise.
+        run: node scripts/verify-sections-build.mjs
+        env:
+          SECTIONS_DIR: ${{ github.workspace }}/storefront-sections/sections
       - name: Start server & verify
         run: |
           npm start &

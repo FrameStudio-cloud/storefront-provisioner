@@ -8,7 +8,7 @@
 
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { formatDomain, validateSubdomain } from './domain.js'
+import { formatDomain, validateSubdomain, projectNameFor, FALLBACK_ROOT_DOMAIN } from './domain.js'
 import { isManagedWebsiteUrl } from './website-url.js'
 
 test('formatDomain joins a label to the platform root', () => {
@@ -24,6 +24,40 @@ test('validateSubdomain rejects reserved names', () => {
   assert.ok(validateSubdomain('www'))
   assert.ok(validateSubdomain('admin'))
   assert.equal(validateSubdomain('my-shop'), null)
+})
+
+// Vercel project names are unique per account, so a name derived from the label
+// alone makes "acme" on a second root domain collide with "acme" on the first.
+test('projectNameFor includes the root so the same label differs per root', () => {
+  const onKeel = projectNameFor('acme', 'keel.framestudio.co.ke')
+  const onOther = projectNameFor('acme', 'myshop.co.ke')
+  assert.notEqual(onKeel, onOther)
+  assert.ok(onKeel.startsWith('storefront-acme-'))
+  assert.ok(onOther.startsWith('storefront-acme-'))
+})
+
+test('projectNameFor stays within a sane length and keeps uniqueness when truncating', () => {
+  const longLabel = 'a'.repeat(50)
+  const name = projectNameFor(longLabel, 'keel.framestudio.co.ke')
+  assert.ok(name.length <= 60, `too long: ${name.length}`)
+  // Truncation must not merge two different FQDNs.
+  assert.notEqual(
+    name,
+    projectNameFor(longLabel, 'some-other-domain.co.ke')
+  )
+})
+
+test('projectNameFor is deterministic and rejects an empty label', () => {
+  assert.equal(
+    projectNameFor('acme', 'keel.framestudio.co.ke'),
+    projectNameFor('acme', 'keel.framestudio.co.ke')
+  )
+  assert.equal(projectNameFor('', 'keel.framestudio.co.ke'), null)
+  assert.equal(projectNameFor('!!!', 'keel.framestudio.co.ke'), null)
+})
+
+test('projectNameFor defaults to the fallback root', () => {
+  assert.equal(projectNameFor('acme'), projectNameFor('acme', FALLBACK_ROOT_DOMAIN))
 })
 
 // --- website_url ownership -------------------------------------------------

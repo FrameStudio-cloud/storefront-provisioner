@@ -1,7 +1,8 @@
 import { Hono } from 'hono'
 import { randomUUID } from 'crypto'
 import { supabase } from '../db.js'
-import { validateSubdomain } from '../lib/domain.js'
+import { validateSubdomain, formatDomain } from '../lib/domain.js'
+import { resolveRootDomain } from '../lib/platform-domains.js'
 import { getTemplate } from '../templates/registry.js'
 import { requireShop } from '../lib/auth.js'
 import { rateLimit } from '../lib/rate-limit.js'
@@ -46,26 +47,41 @@ provisionRoutes.post('/', async (c) => {
     const template = getTemplate(template_id || 'classic')
     if (!template) return c.json({ error: 'Invalid template_id' }, 400)
 
-    // Fail-fast checks that don't require hitting Vercel
+    // Fail-fast checks that don't require hitting Vercel.
+    //
+    // Availability is a property of the FULLY-QUALIFIED name, not the label. This
+    // used to compare `subdomain` on its own, so with more than one root domain
+    // the picker said "Available" (is_subdomain_taken compares the FQDN, and
+    // storefront_deployments_domain_uniq is on the FQDN) and this route then
+    // 409'd with "Subdomain already taken" anyway. Four checks have to agree —
+    // this one, the RPC, the worker's own check, and the unique index — or the
+    // owner is told a name is free and the deploy fails regardless.
+    const rootDomain = await resolveRootDomain({ root: config?.root_domain })
+    const domain = formatDomain(subdomain, rootDomain)
+    if (!domain) return c.json({ error: `Invalid subdomain: ${subdomain}` }, 400)
+
     const existing = await supabase
       .from('storefront_deployments')
       .select('*')
       .eq('shop_id', shop_id)
       .maybeSingle()
 
-    if (existing.data && existing.data.subdomain !== subdomain.toLowerCase()) {
+    if (existing.data && existing.data.domain && existing.data.domain !== domain) {
       return c.json({ error: 'Shop already has a storefront with a different subdomain. Delete it first.' }, 409)
     }
 
+    // limit(1) before maybeSingle(): maybeSingle() errors outright when more than
+    // one row matches, which is exactly the multi-root case this query now allows.
     const taken = await supabase
       .from('storefront_deployments')
       .select('id')
-      .eq('subdomain', subdomain.toLowerCase())
+      .eq('domain', domain)
       .neq('shop_id', shop_id)
+      .limit(1)
       .maybeSingle()
 
     if (taken.data) {
-      return c.json({ error: 'Subdomain already taken' }, 409)
+      return c.json({ error: `"${domain}" is already taken` }, 409)
     }
 
     // Idempotency: if this shop already has an in-flight job, reuse it instead

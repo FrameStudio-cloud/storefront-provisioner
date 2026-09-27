@@ -2,7 +2,7 @@ import { supabase } from '../db.js'
 import { fetchShopData } from './shop-fetcher.js'
 import { renderTemplate, renderFromSections } from './renderer.js'
 import { createProject, createDeployment, assignDomain, getDomain, waitForDomainVerification, deleteProject, registerProjectWebhook } from '../vercel.js'
-import { formatDomain } from './domain.js'
+import { formatDomain, projectNameFor } from './domain.js'
 import { resolveRootDomain } from './platform-domains.js'
 import { isManagedWebsiteUrl, DEFAULT_PLATFORM_DOMAIN } from './website-url.js'
 import { getTemplate, getTemplateDir } from '../templates/registry.js'
@@ -172,7 +172,11 @@ export async function runDeployJob(job) {
       .eq('shop_id', shopId)
       .maybeSingle()
 
-    if (existing.data && existing.data.subdomain !== subdomain.toLowerCase()) {
+    // Compared as a full FQDN, not a label, for the same reason as the taken
+    // check below. A shop whose live address is acme.keel.framestudio.co.ke has
+    // genuinely moved if the requested address is acme.othershop.co.ke, and the
+    // label-only comparison would have waved that through.
+    if (existing.data && existing.data.domain && existing.data.domain !== domain) {
       throw new Error('Shop already has a storefront with a different subdomain. Delete it first.')
     }
 
@@ -196,7 +200,7 @@ export async function runDeployJob(job) {
       projectId = existing.data.vercel_project_id
       deployment = await createDeployment(subdomain.toLowerCase(), projectId, vercelFiles, envVars)
     } else {
-      const projectName = `storefront-${subdomain.toLowerCase()}`
+      const projectName = projectNameFor(subdomain, rootDomain)
       const project = await createProject(projectName)
       projectId = project.id
       try {

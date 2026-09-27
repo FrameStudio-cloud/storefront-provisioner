@@ -19,7 +19,7 @@ function walkDir(dir, baseDir = dir) {
   return files
 }
 
-const SECTION_REGISTRY = {
+export const SECTION_REGISTRY = {
   'navbar/transparent': 'Nav',
   'navbar/solid': 'Nav',
   'hero/slideshow': 'HeroSlideshow',
@@ -47,53 +47,135 @@ const ALL_ICONS = [
 
 const SHARED_DEPS = ['shared/Container', 'shared/ImageWithFallback']
 
-function composeAppJsx(sectionsDir, blueprint) {
-  let allIds = [...new Set([...(blueprint.home || []), ...(blueprint.product || [])])]
+// Every section becomes its OWN MODULE rather than a slice of one big file.
+//
+// This used to concatenate every selected section's source into a single
+// src/App.jsx, stripping import lines with a regex and demoting `export` to
+// nothing. Because that put all the sections in one scope, any two that declared
+// the same top-level name collided — and 7 of the 19 declare `const COLORS` — so
+// the build died with "The symbol COLORS has already been declared". The wizard
+// could not produce a working site: catalogue/grid, catalogue/product-detail and
+// catalogue/related all declare it, and product-detail is added automatically
+// whenever a catalogue is chosen.
+//
+// Emitting one file per section removes the whole class of problem rather than
+// patching it. It also retires three other hacks at once: the regex that stripped
+// imports (sections keep their own, which is why no import allowlist is needed),
+// the ALL_ICONS list (each section already imports the icons it uses), and the
+// shared/Container import that pointed at a path which never existed in the
+// output and only worked because the line was deleted before it mattered.
+//
+// And a section is now a real file with a real module boundary, which is what
+// makes it safe for someone — or something — to add a new one.
+
+function sectionModulePath(id) {
+  return `src/sections/${id.replace(/[^a-z0-9]+/gi, '-').toLowerCase()}.jsx`
+}
+
+// `catalogue/product-detail` -> `CatalogueProductDetail`. Unique even when two
+// sections export the same name (navbar/transparent and navbar/solid are both
+// `Nav`), because a second collision gets a numeric suffix.
+function sectionAlias(id, used) {
+  const base = id
+    .split('/')
+    .map((part) => part.split(/[^a-z0-9]+/i).filter(Boolean).map((w) => w[0].toUpperCase() + w.slice(1)).join(''))
+    .join('') || 'Section'
+  let name = base
+  let n = 2
+  while (used.has(name)) name = `${base}${n++}`
+  used.add(name)
+  return name
+}
+
+function composeSectionModules(sectionsDir, blueprint) {
+  const modules = {}
+  const problems = []
+
+  const home = blueprint.home || []
+  const product = blueprint.product || []
+  const allIds = [...new Set([...home, ...product])]
 
   // Auto-include shared sections if any non-shared sections are present
-  const hasNonShared = allIds.some(id => !id.startsWith('shared/'))
+  const hasNonShared = allIds.some((id) => !id.startsWith('shared/'))
   if (hasNonShared) {
     for (const dep of SHARED_DEPS) {
-      if (!allIds.includes(dep)) allIds.push(dep)
+      if (!allIds.includes(dep)) allIds.push(dep);
     }
   }
 
-  const componentBodies = []
+  const used = new Set()
+  const aliases = new Map()   // section id -> local alias
+  const importLines = []
+
   for (const id of allIds) {
+    const exportName = SECTION_REGISTRY[id]
+    const isShared = id.startsWith('shared/')
+
+    if (!isShared && !exportName) {
+      // Previously dropped with no log at all, so a typo or a removed section
+      // produced a silently shorter page and a "successful" deploy.
+      problems.push(`Unknown section "${id}" — not in SECTION_REGISTRY, skipped`)
+      continue
+    }
+
     const componentPath = join(sectionsDir, ...id.split('/'), 'component.jsx.ejs')
     let source
-    try { source = readFileSync(componentPath, 'utf-8') } catch { continue }
-    let body = source.replace(/^import .*$/gm, '').trim()
-    body = body.replace(/export function /g, 'function ').replace(/export const /g, 'const ')
-    componentBodies.push(body)
+    try {
+      source = readFileSync(componentPath, 'utf-8')
+    } catch {
+      if (!isShared) problems.push(`Section "${id}" has no component.jsx.ejs at ${componentPath} — skipped`)
+      continue
+    }
+
+    // Point the shared imports at the flat module we are about to emit. Both
+    // `../shared/…` (one level deep) and `../../shared/…` (two) appear in the repo.
+    const body = source.replace(
+      /(["'])(\.\.\/)+shared\/([A-Za-z0-9_]+)\/component\.jsx\.ejs\1/g,
+      (_m, q, _dots, name) => `${q}./shared-${name}${q}`
+    )
+
+    // Section files reference a bare `c` (the shop config). In a single file that
+    // was a module-level const; as separate modules each one imports it directly,
+    // which is what the sections were always reaching for. config/site.js has a
+    // default export, so the specifier matches what App.jsx used to do.
+    const withConfig = `import c from '../config/site'\n\n${body.replace(/^\s+/, '')}`
+
+    modules[sectionModulePath(id)] = withConfig
+
+    if (!isShared && exportName) {
+      // Validate the registry against the source. schema.json's `name` is wrong in
+      // 3 of 19 sections and is never read; SECTION_REGISTRY is the real contract,
+      // so a drift between the two used to surface as a Vercel build error.
+      if (!new RegExp(`export\\s+(function|const|class)\\s+${exportName}\\b`).test(source)) {
+        problems.push(
+          `Section "${id}" is registered as exporting "${exportName}" but ${componentPath} does not export it`
+        )
+        continue
+      }
+      const alias = sectionAlias(id, used)
+      const modPath = sectionModulePath(id)
+      aliases.set(id, { alias, exportName, path: modPath })
+      const renamed = alias === exportName ? exportName : `${exportName} as ${alias}`
+      importLines.push(`import { ${renamed} } from '${modPath.replace(/^src\//, './')}'`)
+    }
   }
 
-  const imports = [
-    `import { useState, useEffect, useCallback, useMemo } from 'react'`,
-    `import { Routes, Route, useParams, useNavigate } from 'react-router-dom'`,
-    `import { ${ALL_ICONS.join(', ')} } from '@phosphor-icons/react'`,
-    `import shopConfig from './config/site'`,
-    ``,
-    `const c = shopConfig`,
-  ].join('\n')
-
-  function renderPageJsx(sectionIds) {
-    return (sectionIds || [])
-      .map(id => {
-        const name = SECTION_REGISTRY[id]
-        return name ? `      <${name} />` : ''
+  const renderPage = (ids) =>
+    (ids || [])
+      .map((id) => {
+        const entry = aliases.get(id)
+        return entry ? `      <${entry.alias} />` : ''
       })
       .filter(Boolean)
       .join('\n')
-  }
 
-  const appJsx = `${imports}
-${componentBodies.join('\n\n')}
+  const appJsx = `import { Routes, Route } from 'react-router-dom'
+${importLines.join('\n')}
 
 function HomePage() {
   return (
     <div className="min-h-screen bg-white">
-${renderPageJsx(blueprint.home)}
+${renderPage(home)}
     </div>
   )
 }
@@ -101,7 +183,7 @@ ${renderPageJsx(blueprint.home)}
 function ProductPage() {
   return (
     <div className="min-h-screen bg-white">
-${renderPageJsx(blueprint.product)}
+${renderPage(product)}
     </div>
   )
 }
@@ -115,7 +197,8 @@ export default function App() {
   )
 }
 `
-  return appJsx
+
+  return { modules, appJsx, problems }
 }
 
 function normalizePhone(phone) {
@@ -364,15 +447,27 @@ export function renderTemplate(templateDir, rawData, baseTemplateDir, configOver
   return output
 }
 
-export function renderFromSections(baseTemplateDir, sectionsDir, rawData, blueprint, sectionBaseDir, configOverride) {
+export function renderFromSections(templateDir, sectionsDir, rawData, blueprint, baseDir, configOverride) {
   const config = mapToConfig(rawData, configOverride)
-  const appJsxSource = composeAppJsx(sectionsDir, blueprint)
+  const { modules, appJsx, problems } = composeSectionModules(sectionsDir, blueprint)
   const stylesCssSource = composeStylesCss()
+
+  // Previously an unknown section, or a section whose file was missing, was
+  // dropped with no output at all — the deploy then reported success with a
+  // silently incomplete page. Surface it where the worker logs are.
+  for (const problem of problems) console.warn(`[sections] ${problem}`)
 
   const output = {}
 
   // Walk base + sectionBase dirs (skip App.jsx.ejs / styles.css.ejs)
-  const dirs = sectionBaseDir ? [sectionBaseDir, baseTemplateDir] : [baseTemplateDir]
+  // Walk the template first so it wins, exactly as renderTemplate does. This used
+  // to be the other way round — [baseDir, templateDir] — which was harmless only
+  // because `custom` had no base, so baseDir was always null and the list
+  // collapsed to one entry. Giving `custom` a base (it needs _shared for the site
+  // config) made the inversion live: _shared would have shadowed classic, so
+  // classic's own files were silently discarded. The parameters were also named
+  // backwards, which is how it went unnoticed.
+  const dirs = baseDir ? [templateDir, baseDir] : [templateDir]
   const seen = new Set()
   for (const dir of dirs) {
     const files = walkDir(dir)
@@ -396,9 +491,13 @@ export function renderFromSections(baseTemplateDir, sectionsDir, rawData, bluepr
     }
   }
 
-  // Override with generated files (App.jsx is plain JSX, not EJS)
-  output['src/App.jsx'] = appJsxSource
+  // Generated files. App.jsx and each section module are plain JSX, not EJS.
+  // App.jsx and styles.css.ejs are skipped by the walk above, so nothing collides.
+  output['src/App.jsx'] = appJsx
   output['src/styles.css'] = stylesCssSource
+  for (const [path, source] of Object.entries(modules)) {
+    output[path] = source
+  }
 
   return output
 }

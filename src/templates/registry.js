@@ -60,12 +60,27 @@ const TEMPLATES = [
     description: 'Section-based storefront composed from individual section components. Uses the classic template as base with a generated App.jsx.',
     previewImage: null,
     colors: { primary: '#2563eb', accent: '#f59e0b' },
+    // A sections build still needs the project scaffold, and the single most
+    // important file in it is src/config/site.js.ejs — every generated App.jsx
+    // starts with `import shopConfig from './config/site'`. Without `base` here the
+    // scaffold was not walked at all, so that import resolved to nothing and the
+    // Vercel build failed with "failed to resolve import". That is why the custom
+    // builder could never produce a working site.
+    base: '_shared',
+    tags: ['general'],
+    uiLibrary: 'cite_ui',
+    themeCapabilities: 'basic',
   },
 ]
 
 // Available toolchain variants per template.
 // The key is the toolchain id sent by the dashboard; the value is the template directory suffix.
-// Templates not listed here fall back to their base (cite-ui/phosphor classic).
+//
+// classic:heroui is deliberately kept, but it is a *whole-template* rendering. A
+// sections build generates its own App.jsx in plain Tailwind + Phosphor, so the
+// variant must never be applied there — classic-heroui has no src/config/site.js.ejs
+// and its package.json does not even list @phosphor-icons/react, which every
+// generated section imports.
 const TEMPLATE_VARIANTS = {
   classic: {
     heroui: 'classic-heroui',

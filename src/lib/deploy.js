@@ -116,10 +116,17 @@ export async function runDeployJob(job) {
     const domain = formatDomain(subdomain, rootDomain)
     if (!domain) throw new Error(`Invalid subdomain: ${subdomain}`)
 
-    // For custom/section-based templates, use the classic template dir as base
-    const baseTemplateId = (sections && sections.length > 0) ? 'classic' : template.id
+    // A sections build generates its own App.jsx in plain Tailwind + Phosphor, so
+    // a toolchain variant must never be applied to it. It used to be: the
+    // dashboard's getTemplateById("custom") fell through to classic, whose
+    // toolchain is heroui, so this resolved the directory to classic-heroui — which
+    // has no src/config/site.js.ejs and no @phosphor-icons/react dependency, while
+    // the generated App.jsx imports both. Every custom build died at the Vercel
+    // step. Sections are only ever rendered from the plain template dirs.
+    const isSectionsBuild = Boolean(sections && sections.length > 0)
+    const baseTemplateId = isSectionsBuild ? 'classic' : template.id
 
-    const toolchain = config?.toolchain?.ui || null
+    const toolchain = isSectionsBuild ? null : (config?.toolchain?.ui || null)
     const variantDir = getTemplateDir(baseTemplateId, toolchain)
     let templateDir = join(TEMPLATES_DIR, variantDir)
     if (!existsSync(templateDir)) {
@@ -131,6 +138,23 @@ export async function runDeployJob(job) {
     if (template.base) {
       const basePath = join(TEMPLATES_DIR, template.base)
       if (existsSync(basePath)) baseDir = basePath
+    }
+
+    // Fail here, with the actual reason, rather than letting Vercel report a
+    // missing import two minutes later. These are the files every emitted project
+    // needs: the generated App.jsx imports the site config, and main.jsx boots it.
+    const requiredScaffold = ['src/config/site.js.ejs', 'src/main.jsx.ejs']
+    const missingScaffold = []
+    for (const rel of requiredScaffold) {
+      const inTemplate = existsSync(join(templateDir, rel))
+      const inBase = baseDir ? existsSync(join(baseDir, rel)) : false
+      if (!inTemplate && !inBase) missingScaffold.push(rel)
+    }
+    if (missingScaffold.length > 0) {
+      throw new Error(
+        `Template "${template.id}" is missing required scaffold file(s): ${missingScaffold.join(', ')}. ` +
+        `The site cannot build without them.`
+      )
     }
 
     const renderVars = { ...(config || {}), rootDomain, domain }

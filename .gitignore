@@ -1,2 +1,5 @@
 node_modules
 .env
+
+# Scratch output of scripts/emit-sections-build.mjs
+.tmp-sections-build/

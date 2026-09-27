@@ -1,9 +1,14 @@
 import { readFileSync, readdirSync, statSync } from 'fs'
-import { join, relative } from 'path'
+import { join, relative, isAbsolute } from 'path'
 import { fileURLToPath } from 'url'
 import ejs from 'ejs'
+import { resolveTheme, grayScaleFor, DEFAULT_THEME } from './themes.js'
 
 const __dirname = join(fileURLToPath(import.meta.url), '..')
+
+// Only one directory remains under src/templates: the _shared scaffold. Templates
+// are data now, so a template id resolves to no directory at all.
+const TEMPLATES_DIR = join(__dirname, '..', 'templates')
 
 function walkDir(dir, baseDir = dir) {
   const files = []
@@ -330,13 +335,51 @@ function mapToConfig(raw, configOverride) {
     ],
     developerName: 'Framestudio',
     developerWhatsapp: '254793302518',
+
+    // The three values a template varies in the shared index.html. Everything
+    // else about a design is its section list and theme. Defaults mean a render
+    // with no template context still produces valid markup rather than throwing.
+    titleSuffix: configOverride?.titleSuffix || '',
+    schemaType: configOverride?.schemaType || 'Store',
+    fontHref: configOverride?.fontHref || '',
   }
 }
 
-function composeStylesCss() {
+function composeStylesCss(theme) {
+  const t = theme || resolveTheme(DEFAULT_THEME)
   return `@tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/* Theme variables. Every colour a section can reach comes through the gray scale,
+   which tailwind.config.js maps onto these — so a theme is data, not a fork. */
+:root {
+  --sf-bg: ${t.bg};
+  --sf-surface: ${t.surface};
+  --sf-text: ${t.text};
+  --sf-body: ${t.body};
+  --sf-muted: ${t.muted};
+  --sf-subtle: ${t.subtle};
+  --sf-line: ${t.line};
+  --sf-line-strong: ${t.lineStrong};
+  --sf-brand: ${t.brand};
+  --sf-brand-text: ${t.brandText};
+  --sf-accent: ${t.accent};
+  --sf-radius: ${t.radius};
+  --sf-font: ${t.font};
+  --sf-heading-font: ${t.headingFont};
+}
+
+html, body, #root {
+  background-color: var(--sf-bg);
+  color: var(--sf-text);
+  font-family: var(--sf-font);
+}
+
+h1, h2, h3, h4, h5, h6 {
+  font-family: var(--sf-heading-font);
+  color: var(--sf-text);
+}
 
 html {
   scroll-behavior: smooth;
@@ -418,39 +461,70 @@ html {
 }`
 }
 
-export function renderTemplate(templateDir, rawData, baseTemplateDir, configOverride) {
-  const config = mapToConfig(rawData, configOverride)
-  const output = {}
-
-  // Walk template dir first (higher priority, overrides base), then shared base fills gaps
-  const dirs = baseTemplateDir ? [templateDir, baseTemplateDir] : [templateDir]
-  const seen = new Set()
-  for (const dir of dirs) {
-    const files = walkDir(dir)
-    for (const { full, rel } of files) {
-      const normalized = rel.replace(/\\/g, '/')
-      if (seen.has(normalized)) continue
-      seen.add(normalized)
-
-      if (!rel.endsWith('.ejs')) {
-        output[rel] = readFileSync(full, 'utf-8')
-        continue
-      }
-
-      const content = readFileSync(full, 'utf-8')
-      const rendered = ejs.render(content, config)
-      const outPath = rel.replace(/\.ejs$/, '')
-      output[outPath] = rendered
-    }
-  }
-
-  return output
+// Generated per build so a theme applies without touching any section.
+//
+// The sections are written against Tailwind's default gray palette — text-gray-900,
+// bg-gray-50, border-gray-100 and so on, which is what a developer reaches for by
+// default. Rather than rewrite 19 section files to use CSS variables, the palette
+// itself is remapped onto the theme. Status colours (green/amber/red) are
+// deliberately NOT remapped: a brand theme should not change what "in stock" means.
+function composeTailwindConfig(theme) {
+  const t = theme || resolveTheme(DEFAULT_THEME)
+  const gray = grayScaleFor(t)
+  // Every value interpolated here must be ${}-substituted. An earlier version had
+  // a bare `DEFAULT: t.radius`, so the generated config referenced an undefined
+  // `t` and every build died in postcss with a parse error on the config's line 24.
+  const grayLines = Object.entries(gray)
+    .map(([k, v]) => `          ${k}: '${v}',`)
+    .join('\n')
+  return `/** @type {import('tailwindcss').Config} */
+export default {
+  content: ['./index.html', './src/**/*.{js,jsx}'],
+  theme: {
+    extend: {
+      colors: {
+        gray: {
+${grayLines}
+        },
+        brand: 'var(--sf-brand)',
+        accent: 'var(--sf-accent)',
+      },
+      borderRadius: {
+        DEFAULT: '${t.radius}',
+        md: '${t.radius}',
+        lg: '${t.radius}',
+        xl: '${t.radius}',
+        '2xl': '${t.radius}',
+        '3xl': '${t.radius}',
+      },
+      fontFamily: {
+        sans: 'var(--sf-font)',
+        display: 'var(--sf-heading-font)',
+      },
+      keyframes: {
+        fadeIn: { from: { opacity: '0' }, to: { opacity: '1' } },
+        fadeScaleIn: { from: { opacity: '0', transform: 'scale(0.95)' }, to: { opacity: '1', transform: 'scale(1)' } },
+        slideUp: { from: { opacity: '0', transform: 'translateY(20px)' }, to: { opacity: '1', transform: 'translateY(0)' } },
+      },
+    },
+  },
+  plugins: [],
+}
+`
 }
 
+// renderTemplate is gone. It used to walk a template directory and EJS-render its
+// own App.jsx.ejs — one per template, each carrying its own private copy of Nav,
+// ProductCard, ProductDetail, Footer and the rest. With templates now expressed as
+// a section list plus a theme, every site is produced by composeSectionModules, and
+// keeping a second renderer would only invite the same drift that lost the
+// #catalogue anchor from one side.
 export function renderFromSections(templateDir, sectionsDir, rawData, blueprint, baseDir, configOverride) {
   const config = mapToConfig(rawData, configOverride)
+  const theme = resolveTheme(configOverride?.theme_name || configOverride?.themeName)
   const { modules, appJsx, problems } = composeSectionModules(sectionsDir, blueprint)
-  const stylesCssSource = composeStylesCss()
+  const stylesCssSource = composeStylesCss(theme)
+  const tailwindConfigSource = composeTailwindConfig(theme)
 
   // Previously an unknown section, or a section whose file was missing, was
   // dropped with no output at all — the deploy then reported success with a
@@ -459,15 +533,14 @@ export function renderFromSections(templateDir, sectionsDir, rawData, blueprint,
 
   const output = {}
 
-  // Walk base + sectionBase dirs (skip App.jsx.ejs / styles.css.ejs)
-  // Walk the template first so it wins, exactly as renderTemplate does. This used
-  // to be the other way round — [baseDir, templateDir] — which was harmless only
-  // because `custom` had no base, so baseDir was always null and the list
-  // collapsed to one entry. Giving `custom` a base (it needs _shared for the site
-  // config) made the inversion live: _shared would have shadowed classic, so
-  // classic's own files were silently discarded. The parameters were also named
-  // backwards, which is how it went unnoticed.
-  const dirs = baseDir ? [templateDir, baseDir] : [templateDir]
+  // Accept either a bare name under src/templates ('_shared') or an absolute path,
+  // so callers do not have to know where TEMPLATES_DIR lives. There is one
+  // directory now — the scaffold — and nothing shadows anything, which is the
+  // outcome of a long-lived bug: this used to walk [baseDir, templateDir] while
+  // renderTemplate walked [templateDir, baseDir], harmless only because `custom`
+  // had no base.
+  const resolveDir = (dir) => (isAbsolute(dir) ? dir : join(TEMPLATES_DIR, dir))
+  const dirs = baseDir ? [resolveDir(templateDir), resolveDir(baseDir)] : [resolveDir(templateDir)]
   const seen = new Set()
   for (const dir of dirs) {
     const files = walkDir(dir)
@@ -476,7 +549,14 @@ export function renderFromSections(templateDir, sectionsDir, rawData, blueprint,
       if (seen.has(normalized)) continue
       seen.add(normalized)
 
-      const skipList = ['src/App.jsx.ejs', 'src/App.jsx', 'src/renderer.js', 'src/renderer.js.ejs', 'src/styles.css.ejs', 'src/styles.css']
+      // tailwind.config.js is generated so the theme's gray-scale remap applies.
+      // Taking the template's copy would silently discard the theming.
+      const skipList = [
+        'src/App.jsx.ejs', 'src/App.jsx',
+        'src/renderer.js', 'src/renderer.js.ejs',
+        'src/styles.css.ejs', 'src/styles.css',
+        'tailwind.config.js.ejs', 'tailwind.config.js',
+      ]
       if (skipList.includes(normalized)) continue
 
       if (!rel.endsWith('.ejs')) {
@@ -495,6 +575,7 @@ export function renderFromSections(templateDir, sectionsDir, rawData, blueprint,
   // App.jsx and styles.css.ejs are skipped by the walk above, so nothing collides.
   output['src/App.jsx'] = appJsx
   output['src/styles.css'] = stylesCssSource
+  output['tailwind.config.js'] = tailwindConfigSource
   for (const [path, source] of Object.entries(modules)) {
     output[path] = source
   }

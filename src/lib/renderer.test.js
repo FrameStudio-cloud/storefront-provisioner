@@ -1,12 +1,15 @@
-// Renders the real template directories and inspects the emitted head tags.
+// Renders the shared scaffold and inspects the emitted head tags.
 //
-// The point is the URL tags, not the styling: the templates used to derive their
-// own canonical host by slugifying the shop name and appending a hardcoded
-// platform root, then prefix the result with "https://" — while
+// The point is the URL tags, not the styling. The five index.html.ejs files used
+// to derive their own canonical host by slugifying the shop name and appending a
+// hardcoded platform root, then prefix the result with "https://" — while
 // store_settings.website_url is stored WITH a scheme. That combination emitted
 //   <link rel="canonical" href="https://https://shop.example/">
-// which is a broken canonical on every storefront. Also confirms the root is no
-// longer baked into the templates, so a second owned domain just works.
+// which is a broken canonical on every storefront.
+//
+// Those five files are now one, parameterised by titleSuffix / schemaType /
+// fontHref. These tests run every catalogued design through it, which is the whole
+// point of a template being data.
 //
 // node --test, no credentials needed.
 
@@ -16,9 +19,11 @@ import { join, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { hostOf, resolveSiteHost } from './renderer.js'
 import { formatDomain, FALLBACK_ROOT_DOMAIN } from './domain.js'
+import { listTemplates } from '../templates/registry.js'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
-const TEMPLATES = join(HERE, '..', 'templates')
+const SECTIONS_DIR =
+  process.env.SECTIONS_DIR || join(HERE, '..', '..', '..', 'storefront-sections', 'sections')
 
 // Minimal shop payload — mapToConfig tolerates missing collections.
 const SHOP = {
@@ -32,22 +37,18 @@ const SHOP = {
   banners: [],
 }
 
-// renderer.js is ESM and pulls in ejs plus the filesystem. Imported lazily so the
-// pure-function tests above do not depend on module load order.
-let _renderer
-async function renderer() {
-  if (!_renderer) _renderer = await import('./renderer.js')
-  return _renderer
-}
-
 const grab = (html, re) => (html.match(re) || [])[1] || null
 
-// renderTemplate returns a map of output path -> contents, and nested keys keep
-// Windows separators, so find the html by suffix rather than hardcoding.
-function renderIndexHtml(renderTemplate, templateId, configOverride) {
-  const out = renderTemplate(join(TEMPLATES, templateId), SHOP, null, configOverride)
+// There is one scaffold now, so render it through the same path a deploy uses and
+// pull out index.html. The blueprint is empty on purpose: these tests are about the
+// head, and an empty one keeps the output to the scaffold alone.
+async function renderIndexHtml(configOverride) {
+  const { renderFromSections } = await import('./renderer.js')
+  const out = renderFromSections(
+    '_shared', SECTIONS_DIR, SHOP, { home: [], product: [] }, null, configOverride
+  )
   const key = Object.keys(out).find((k) => k.replace(/\\/g, '/').endsWith('index.html'))
-  assert.ok(key, `${templateId} produced no index.html (keys: ${Object.keys(out).join(', ')})`)
+  assert.ok(key, `scaffold produced no index.html (keys: ${Object.keys(out).join(', ')})`)
   return out[key]
 }
 
@@ -91,12 +92,17 @@ test('formatDomain takes a root, and still works with one argument', () => {
   assert.equal(formatDomain('acme', ''), null)
 })
 
-for (const templateId of ['classic', 'classic-heroui', 'bold', 'minimal', 'modern', 'clothing']) {
-  test(`${templateId}: canonical, og:url and JSON-LD carry the claimed domain once`, async () => {
-    const { renderTemplate } = await renderer()
-    const html = renderIndexHtml(renderTemplate, templateId, {
+// The catalogued designs, minus `custom` whose sections arrive in the request.
+const DESIGNS = listTemplates().filter((t) => t.sections.length > 0)
+
+for (const template of DESIGNS) {
+  test(`${template.id}: canonical, og:url and JSON-LD carry the claimed domain once`, async () => {
+    const html = await renderIndexHtml({
       rootDomain: 'myshop.co.ke',
       domain: 'campus-glow.myshop.co.ke',
+      titleSuffix: template.titleSuffix,
+      schemaType: template.schemaType,
+      fontHref: template.fontHref,
     })
 
     const canonical = grab(html, /<link rel="canonical" href="([^"]*)"/)
@@ -110,16 +116,40 @@ for (const templateId of ['classic', 'classic-heroui', 'bold', 'minimal', 'moder
     // The two bugs this replaced.
     assert.ok(!html.includes('https://https://'), 'must not emit a doubled scheme')
     assert.ok(!html.includes('myshop.co.ke.keel'), 'must not double-append the root')
+
+    // The per-template fields must still reach the head, now that there is one
+    // shared index.html rather than five near-identical copies.
+    assert.ok(html.includes(template.titleSuffix), 'title must carry the template suffix')
+    assert.ok(
+      html.includes(`"@type": "${template.schemaType}"`),
+      'schema @type must be the template type'
+    )
   })
 }
 
-test('the Keel-branded asset links stay pointed at the Keel app', async () => {
-  const { renderTemplate } = await renderer()
-  const html = renderIndexHtml(renderTemplate, 'classic', {
-    rootDomain: 'myshop.co.ke',
-    domain: 'campus-glow.myshop.co.ke',
+test('a font href is only emitted when the template asks for one', async () => {
+  const withFont = await renderIndexHtml({
+    domain: 'a.myshop.co.ke', fontHref: 'https://fonts.example/x.css', titleSuffix: '',
   })
+  assert.ok(withFont.includes('https://fonts.example/x.css'))
+
+  const without = await renderIndexHtml({ domain: 'a.myshop.co.ke', fontHref: '', titleSuffix: '' })
+  assert.ok(!without.includes('fonts.example'))
+})
+
+test('the Keel-branded asset links stay pointed at the Keel app', async () => {
+  const html = await renderIndexHtml({ domain: 'campus-glow.myshop.co.ke', titleSuffix: '' })
   // Shared favicons are served by the Keel dashboard, not the shop's domain.
   assert.ok(html.includes('https://keel.framestudio.co.ke/keel-icon.webp'))
   assert.ok(html.includes('https://keel.framestudio.co.ke/favicon-32x32.png'))
+})
+
+test('every catalogued design is a section list plus a theme - not a directory', () => {
+  // The property that makes adding a design a five-line change. If a template ever
+  // needs its own files again, this is where it should fail loudly.
+  for (const t of listTemplates()) {
+    assert.ok(Array.isArray(t.sections), `${t.id} must declare a sections array`)
+    assert.equal(typeof t.theme, 'string', `${t.id} must name a theme`)
+  }
+  assert.ok(DESIGNS.length >= 5, 'the five catalogued designs should still be listed')
 })

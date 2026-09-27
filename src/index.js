@@ -3,6 +3,7 @@ import { serve } from '@hono/node-server'
 import { Hono } from 'hono'
 import { cors } from 'hono/cors'
 import { templatesRoutes } from './routes/templates.js'
+import { buildRoutes } from './routes/build.js'
 import { provisionRoutes } from './routes/provision.js'
 import { statusRoutes } from './routes/status.js'
 import { deleteRoutes } from './routes/delete.js'
@@ -32,6 +33,7 @@ app.use('/*', cors({
 app.get('/', (c) => c.json({ ok: true, name: 'storefront-provisioner' }))
 
 app.route('/templates', templatesRoutes)
+app.route('/build', buildRoutes)
 app.route('/provision', provisionRoutes)
 app.route('/status', statusRoutes)
 app.route('/delete', deleteRoutes)

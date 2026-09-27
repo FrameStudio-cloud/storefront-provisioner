@@ -1,9 +1,10 @@
-// Writes a rendered sections build to disk so it can be compiled for real.
-//   node scripts/emit-sections-build.mjs [outDir] [sectionsDir]
+// Writes a rendered build to disk so it can be compiled for real.
+//   node scripts/emit-sections-build.mjs [outDir] [templateId]
 //
 // A coherence check on the generated text is not the same as a compiler agreeing
-// it builds. This exists so "does the custom builder actually work?" is answered
-// by vite, not by inspection.
+// it builds. This exists so "does this template actually work?" is answered by
+// vite, not by inspection. Pass a template id (default: all of them, one at a
+// time into <outDir>/<id>).
 
 import { mkdirSync, writeFileSync, rmSync, existsSync } from 'node:fs'
 import { join, dirname } from 'node:path'
@@ -12,14 +13,16 @@ import { fileURLToPath, pathToFileURL } from 'node:url'
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..')
 const imp = (p) => import(pathToFileURL(p).href)
 
-const OUT = process.argv[2] || join(ROOT, '.tmp-sections-build')
+const BASE_OUT = process.argv[2] || join(ROOT, '.tmp-sections-build')
+const ONLY = process.argv[3] || null
 const SECTIONS_DIR =
-  process.argv[3] || process.env.SECTIONS_DIR || join(ROOT, '..', 'storefront-sections', 'sections')
+  process.env.SECTIONS_DIR || join(ROOT, '..', 'storefront-sections', 'sections')
 
 const { renderFromSections } = await imp(join(ROOT, 'src/lib/renderer.js'))
-const { getTemplate } = await imp(join(ROOT, 'src/templates/registry.js'))
+const { getTemplate, listTemplates } = await imp(join(ROOT, 'src/templates/registry.js'))
 
 const TEMPLATES_DIR = join(ROOT, 'src', 'templates')
+const SCAFFOLD = '_shared'
 
 const SHOP = {
   shop: { id: '11111111-1111-1111-1111-111111111111', name: 'Test Shop', slug: 'test-shop' },
@@ -39,49 +42,63 @@ const SHOP = {
   ],
 }
 
-const SECTIONS = [
-  'announcements', 'navbar/transparent', 'hero/slideshow', 'about',
-  'categories/strip', 'catalogue/grid', 'footer/4-column',
-  'whatsapp-float', 'back-to-top',
-  'catalogue/product-detail', 'catalogue/related',
-]
-
+// buildBlueprint's rule, mirrored. deploy.js owns the real one; this cannot import
+// it because deploy.js pulls in vercel.js, which exits without VERCEL_TOKEN.
 const productOnly = ['catalogue/product-detail', 'catalogue/related']
 const bothPages = ['announcements', 'whatsapp-float', 'back-to-top']
-const blueprint = {
-  home: SECTIONS.filter((id) => !productOnly.includes(id)),
-  product: SECTIONS.filter(
-    (id) => productOnly.includes(id) || bothPages.includes(id) ||
-      id.startsWith('navbar/') || id.startsWith('footer/')
-  ),
-}
 
-const template = getTemplate('custom')
-const baseDir = template?.base && existsSync(join(TEMPLATES_DIR, template.base))
-  ? join(TEMPLATES_DIR, template.base)
+const baseDir = existsSync(join(TEMPLATES_DIR, SCAFFOLD))
+  ? join(TEMPLATES_DIR, SCAFFOLD)
   : null
 
 if (!baseDir) {
-  console.error('  custom template has no usable base — the scaffold would be missing')
+  console.error(`  project scaffold "${SCAFFOLD}" is missing from src/templates`)
   process.exit(2)
 }
 
-const out = renderFromSections(
-  join(TEMPLATES_DIR, 'classic'),
-  SECTIONS_DIR,
-  SHOP,
-  blueprint,
-  baseDir,
-  { rootDomain: 'keel.framestudio.co.ke', domain: 'test-shop.keel.framestudio.co.ke' }
-)
+const ids = ONLY ? [ONLY] : listTemplates().filter((t) => t.sections?.length).map((t) => t.id)
 
-rmSync(OUT, { recursive: true, force: true })
-let n = 0
-for (const [path, content] of Object.entries(out)) {
-  const dest = join(OUT, path)
-  mkdirSync(dirname(dest), { recursive: true })
-  writeFileSync(dest, content)
-  n++
+for (const id of ids) {
+  const template = getTemplate(id)
+  const sections = template.sections || []
+  if (!sections.length) {
+    console.log(`  ${id}: no sections, skipped`)
+    continue
+  }
+  const blueprint = {
+    home: sections.filter((s) => !productOnly.includes(s)),
+    product: sections.filter(
+      (s) => productOnly.includes(s) || bothPages.includes(s) ||
+        s.startsWith('navbar/') || s.startsWith('footer/')
+    ),
+  }
+
+  const out = renderFromSections(
+    '_shared',
+    SECTIONS_DIR,
+    SHOP,
+    blueprint,
+    null,
+    {
+      rootDomain: 'keel.framestudio.co.ke',
+      domain: 'test-shop.keel.framestudio.co.ke',
+      theme_name: template.theme,
+      titleSuffix: template.titleSuffix,
+      schemaType: template.schemaType,
+      fontHref: template.fontHref,
+    }
+  )
+
+  const dest = ONLY ? BASE_OUT : join(BASE_OUT, id)
+  rmSync(dest, { recursive: true, force: true })
+  let n = 0
+  for (const [path, content] of Object.entries(out)) {
+    const target = join(dest, path)
+    mkdirSync(dirname(target), { recursive: true })
+    writeFileSync(target, content)
+    n++
+  }
+  console.log(`  ${id.padEnd(10)} ${String(n).padStart(3)} files  theme=${template.theme}  -> ${dest}`)
 }
-console.log(`  wrote ${n} files to ${OUT}`)
-console.log(`  run:  cd "${OUT}" && npm install && npx vite build`)
+
+console.log(`\n  for each:  cd <dir> && npm install && npx vite build`)

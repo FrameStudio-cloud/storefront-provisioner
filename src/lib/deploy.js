@@ -1,11 +1,11 @@
 import { supabase } from '../db.js'
 import { fetchShopData } from './shop-fetcher.js'
-import { renderTemplate, renderFromSections } from './renderer.js'
+import { renderFromSections } from './renderer.js'
 import { createProject, createDeployment, assignDomain, getDomain, waitForDomainVerification, deleteProject, registerProjectWebhook } from '../vercel.js'
 import { formatDomain, projectNameFor } from './domain.js'
 import { resolveRootDomain } from './platform-domains.js'
 import { isManagedWebsiteUrl, DEFAULT_PLATFORM_DOMAIN } from './website-url.js'
-import { getTemplate, getTemplateDir } from '../templates/registry.js'
+import { getTemplate } from '../templates/registry.js'
 import { join } from 'path'
 import { fileURLToPath } from 'url'
 import { existsSync } from 'fs'
@@ -116,61 +116,79 @@ export async function runDeployJob(job) {
     const domain = formatDomain(subdomain, rootDomain)
     if (!domain) throw new Error(`Invalid subdomain: ${subdomain}`)
 
-    // A sections build generates its own App.jsx in plain Tailwind + Phosphor, so
-    // a toolchain variant must never be applied to it. It used to be: the
-    // dashboard's getTemplateById("custom") fell through to classic, whose
-    // toolchain is heroui, so this resolved the directory to classic-heroui — which
-    // has no src/config/site.js.ejs and no @phosphor-icons/react dependency, while
-    // the generated App.jsx imports both. Every custom build died at the Vercel
-    // step. Sections are only ever rendered from the plain template dirs.
-    const isSectionsBuild = Boolean(sections && sections.length > 0)
-    const baseTemplateId = isSectionsBuild ? 'classic' : template.id
-
-    const toolchain = isSectionsBuild ? null : (config?.toolchain?.ui || null)
-    const variantDir = getTemplateDir(baseTemplateId, toolchain)
-    let templateDir = join(TEMPLATES_DIR, variantDir)
-    if (!existsSync(templateDir)) {
-      console.warn(`[${trace_id || jobId}] Template variant "${variantDir}" not found, falling back to "${baseTemplateId}"`)
-      templateDir = join(TEMPLATES_DIR, baseTemplateId)
-    }
-
-    let baseDir = null
-    if (template.base) {
-      const basePath = join(TEMPLATES_DIR, template.base)
-      if (existsSync(basePath)) baseDir = basePath
-    }
-
-    // Fail here, with the actual reason, rather than letting Vercel report a
-    // missing import two minutes later. These are the files every emitted project
-    // needs: the generated App.jsx imports the site config, and main.jsx boots it.
-    const requiredScaffold = ['src/config/site.js.ejs', 'src/main.jsx.ejs']
-    const missingScaffold = []
-    for (const rel of requiredScaffold) {
-      const inTemplate = existsSync(join(templateDir, rel))
-      const inBase = baseDir ? existsSync(join(baseDir, rel)) : false
-      if (!inTemplate && !inBase) missingScaffold.push(rel)
-    }
-    if (missingScaffold.length > 0) {
+    // The project scaffold is always _shared, and it is the ONLY directory now.
+    //
+    // There used to be a per-template `base` field plus a per-template directory
+    // holding its own App.jsx, styles, tailwind config and index.html - about 2,900
+    // lines across five designs, each carrying a private copy of every component.
+    // A template is now data (a section list and a theme name), so it has nothing
+    // to point at. The custom template simply never declared `base`, which is how
+    // the scaffold went unwalked and the generated App.jsx ended up importing a
+    // site config that was never emitted.
+    const SCAFFOLD_DIR = '_shared'
+    if (!existsSync(join(TEMPLATES_DIR, SCAFFOLD_DIR))) {
       throw new Error(
-        `Template "${template.id}" is missing required scaffold file(s): ${missingScaffold.join(', ')}. ` +
-        `The site cannot build without them.`
+        `Project scaffold "${SCAFFOLD_DIR}" is missing from src/templates — cannot build any site.`
       )
     }
 
-    const renderVars = { ...(config || {}), rootDomain, domain }
-
-    let renderedFiles
-    if (sections && sections.length > 0) {
-      const sectionsCwd = join(process.cwd(), 'storefront-sections', 'sections')
-      const sectionsLegacy = join(TEMPLATES_DIR, '..', '..', 'storefront-sections', 'sections')
-      const sectionsDir = process.env.SECTIONS_DIR
-        || (existsSync(sectionsCwd) ? sectionsCwd : sectionsLegacy)
-      const blueprint = buildBlueprint(sections)
-      renderedFiles = renderFromSections(templateDir, sectionsDir, rawData, blueprint, baseDir, renderVars)
-    } else {
-      renderedFiles = renderTemplate(templateDir, rawData, baseDir, renderVars)
+    // The scaffold every emitted project needs: the generated App.jsx imports the
+    // site config, and main.jsx boots it. Checked here so a missing file names
+    // itself, rather than letting Vercel report an unresolved import later.
+    const requiredScaffold = ['src/config/site.js.ejs', 'src/main.jsx.ejs', 'index.html.ejs']
+    const missingScaffold = requiredScaffold.filter(
+      (rel) => !existsSync(join(TEMPLATES_DIR, SCAFFOLD_DIR, rel))
+    )
+    if (missingScaffold.length > 0) {
+      throw new Error(
+        `Project scaffold "${SCAFFOLD_DIR}" is missing: ${missingScaffold.join(', ')}. ` +
+        `No storefront can build without these.`
+      )
     }
 
+    // ONE rendering path. A template declares its sections and a theme; the
+    // dashboard's "Build your own" wizard sends its own section ids instead.
+    // Either way the same composer produces the site, so there is no second
+    // implementation to keep in step — which is what let the two diverge and
+    // lose the #catalogue anchor from one side only.
+    const effectiveSections = (sections && sections.length > 0)
+      ? sections
+      : (template.sections || [])
+
+    if (!effectiveSections.length) {
+      throw new Error(
+        `Template "${template.id}" has no sections. Add a "sections" list to it in src/templates/registry.js.`
+      )
+    }
+
+    const renderVars = {
+      ...(config || {}),
+      rootDomain,
+      domain,
+      theme_name: template.theme || config?.theme_name,
+      // The shared index.html is the only thing a template still varies, and only
+      // by these three values. Everything else about a design is its section list.
+      titleSuffix: template.titleSuffix || '',
+      schemaType: template.schemaType || 'Store',
+      fontHref: template.fontHref || '',
+    }
+
+    const sectionsCwd = join(process.cwd(), 'storefront-sections', 'sections')
+    const sectionsLegacy = join(TEMPLATES_DIR, '..', '..', 'storefront-sections', 'sections')
+    const sectionsDir = process.env.SECTIONS_DIR
+      || (existsSync(sectionsCwd) ? sectionsCwd : sectionsLegacy)
+
+    if (!existsSync(sectionsDir)) {
+      throw new Error(
+        `The sections repo was not found at ${sectionsDir}. It is cloned during the build; ` +
+        `check the Render build log.`
+      )
+    }
+
+    const blueprint = buildBlueprint(effectiveSections)
+    const renderedFiles = renderFromSections(
+      SCAFFOLD_DIR, sectionsDir, rawData, blueprint, null, renderVars
+    )
     const vercelFiles = Object.entries(renderedFiles).map(([path, data]) => ({
       file: path.replace(/\\/g, '/'),
       data: Buffer.from(data).toString('base64'),

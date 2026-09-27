@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta name="description" content="<%= (tagline || description || name) %>" />
-  <title><%= name %> — Shop</title>
+  <title><%= name %><%= titleSuffix %></title>
 
   <link rel="canonical" href="<%= siteUrl %>" />
 
@@ -23,6 +23,9 @@
 
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <% if (fontHref) { %>
+  <link href="<%= fontHref %>" rel="stylesheet" />
+  <% } %>
 
   <style>
     :root {
@@ -34,7 +37,7 @@
   <script type="application/ld+json">
   {
     "@context": "https://schema.org",
-    "@type": "Store",
+    "@type": "<%= (schemaType || 'Store') %>",
     "name": "<%= (name || '').replace(/"/g, '\\"') %>",
     "description": "<%= ((tagline || description || name) || '').replace(/"/g, '\\"') %>",
     "url": "<%= siteUrl %>",

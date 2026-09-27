@@ -54,16 +54,17 @@ function blueprintFor(sectionIds) {
 }
 
 const SECTION_SETS = {
-  'classic-equivalent': [
-    'announcements', 'navbar/transparent', 'hero/slideshow', 'about',
-    'catalogue/grid', 'footer/4-column', 'whatsapp-float', 'back-to-top',
-    'catalogue/product-detail', 'catalogue/related',
-  ],
-  'minimal-equivalent': [
-    'navbar/solid', 'hero/static', 'catalogue/grid', 'footer/minimal',
-    'whatsapp-float', 'back-to-top', 'catalogue/product-detail', 'catalogue/related',
-  ],
+  // The five catalogued designs, exactly as the registry declares them. A template
+  // is now data, so this is the whole set of things that can be deployed without
+  // writing code.
+  'template:classic': null,
+  'template:clothing': null,
+  'template:minimal': null,
+  'template:bold': null,
+  'template:modern': null,
 }
+
+const TEMPLATE_IDS = ['classic', 'clothing', 'minimal', 'bold', 'modern']
 
 if (!existsSync(SECTIONS_DIR)) {
   console.error(`\n  sections repo not found at ${SECTIONS_DIR}`)
@@ -71,31 +72,47 @@ if (!existsSync(SECTIONS_DIR)) {
   process.exit(2)
 }
 
+// A template must be able to produce a site with no other input.
+for (const id of TEMPLATE_IDS) {
+  const t = getTemplate(id)
+  if (!t) { console.log(`\n── template:${id} ──\n   ✗ not in the registry`); failures++; continue }
+  SECTION_SETS[`template:${id}`] = t.sections
+}
+
 let failures = 0
 const fail = (set, msg) => { failures++; console.log(`   ✗ ${msg}`) }
 const pass = (msg) => console.log(`   ✓ ${msg}`)
 
 for (const [name, sections] of Object.entries(SECTION_SETS)) {
+  if (!sections) continue
   console.log(`\n── ${name} (${sections.length} sections) ──`)
 
-  const template = getTemplate('custom')
-  if (!template) { fail(name, 'no custom template in registry'); continue }
-  if (!template.base) { fail(name, 'custom has no base, so the scaffold would be missing'); continue }
-  pass(`registry: custom.base = ${template.base}`)
+  const templateId = name.startsWith('template:') ? name.split(':')[1] : 'custom'
+  const template = getTemplate(templateId)
+  if (!template) { fail(name, `"${templateId}" is not in the registry`); continue }
+  if (!Array.isArray(template.sections) || template.sections.length === 0) {
+    fail(name, `template "${templateId}" declares no sections`)
+    continue
+  }
+  if (!template.theme) { fail(name, `template "${templateId}" declares no theme`); continue }
+  pass(`registry: ${template.sections.length} sections, theme "${template.theme}"`)
 
-  const baseTemplateId = 'classic'
-  const baseDir = existsSync(join(TEMPLATES_DIR, template.base)) ? join(TEMPLATES_DIR, template.base) : null
-  if (!baseDir) { fail(name, `base dir ${template.base} does not exist`); continue }
-
-  // D1 regression guard: a sections build must never resolve to a variant dir.
-  const toolchainForSections = null
+  // One scaffold serves every template now, so there is no per-template directory.
   const out = renderFromSections(
-    join(TEMPLATES_DIR, baseTemplateId),
+    '_shared',
     SECTIONS_DIR,
     SHOP,
     blueprintFor(sections),
-    baseDir,
-    { rootDomain: 'keel.framestudio.co.ke', domain: 'test-shop.keel.framestudio.co.ke', toolchain: { ui: toolchainForSections } }
+    null,
+    {
+      rootDomain: 'keel.framestudio.co.ke',
+      domain: 'test-shop.keel.framestudio.co.ke',
+      toolchain: { ui: null },
+      theme_name: template.theme,
+      titleSuffix: template.titleSuffix,
+      schemaType: template.schemaType,
+      fontHref: template.fontHref,
+    }
   )
 
   const files = Object.keys(out).map((k) => k.replace(/\\/g, '/'))
